@@ -61,7 +61,7 @@ if total_loss1 < total_loss2:
 else:
   better_fit = 2
 
-# Gradient Descent -------------------------------
+# Gradient Descent ---------------------------------
 
 def get_gradient_at_b(x, y, m, b):
   return b
