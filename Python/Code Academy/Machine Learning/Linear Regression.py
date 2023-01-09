@@ -102,3 +102,12 @@ m = 0
 # Call your function here to update b and m
 b, m = step_gradient(months, revenue, b, m)
 print(b, m)
+
+
+
+
+
+
+
+
+
