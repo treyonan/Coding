@@ -1,4 +1,4 @@
-# Lesson 6
+# Lesson 6 - Faster launch of webcam and smoother video
 
 import cv2
 print(cv2.__version__)
