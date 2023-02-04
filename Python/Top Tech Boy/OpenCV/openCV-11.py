@@ -1,4 +1,4 @@
-# Lesson 11 - Processing Mouse Clicks and Events
+# Lesson 10 - Processing Mouse Clicks and Events
 
 import cv2
 print(cv2.__version__)
