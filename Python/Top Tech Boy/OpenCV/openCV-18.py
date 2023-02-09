@@ -1,4 +1,7 @@
-# Lesson 13 - Tracking an Object Based on Color in OpenCV
+# Lesson 13 Homework - Tracking an Object Based on Color in OpenCV
+
+# 1. Track on two different color objects
+# 2. Track red by using two different color ranges since it straddles zero. Will need two sets of track bars for hue
 
 import cv2
 import numpy as np
