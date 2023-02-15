@@ -22,3 +22,7 @@ print(newlist)
 newlist = [x if x != "banana" else "orange" for x in fruits]
 
 print(newlist)
+
+matrix = [[j for j in range(3)] for i in range(5)]
+  
+print(matrix)

@@ -1,4 +1,8 @@
-# Lesson 14 - Understanding Contours in OpenCV
+# Lesson 14 Homework - Understanding Contours in OpenCV
+
+# 1. Move frame based on position of bounding rectangle parameters
+
+
 
 import numpy as np
 import cv2
