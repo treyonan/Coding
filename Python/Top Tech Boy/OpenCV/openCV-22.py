@@ -1,4 +1,7 @@
-# Lesson 15: Face Detection using OpenCV
+# Lesson 15 Homework: Face Detection using OpenCV
+
+# 1. print FPS with face detection
+# 2. add eye detection and put red rectangles around each eye
 
 import cv2
 print(cv2.__version__)
