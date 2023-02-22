@@ -1,8 +1,9 @@
 import matplotlib.pyplot as plt
         
 # Input data
-x = [396, 1627, 2867]
-y = [1000, 4000, 7000]
+x = [1000,4000,7000]
+y = [396,1627,2867]
+
 
 # Calculate the necessary values
 n = len(x)
@@ -17,7 +18,13 @@ b = (sum_y - m * sum_x) / n
 
 y2 = [i*m+b for i in x]
 
+print(n)
 print(sum_x)
+print(sum_y)
+print(sum_xy)
+print(sum_x_squared)
+print(m)
+print(b)
 
 for i in y2:
     print(i)
