@@ -1,4 +1,7 @@
-# Lesson 16 - Face Recognition with OpenCV
+# Lesson 16 Homework - Face Recognition with OpenCV
+
+# 1. Perform live tracking with family members
+
 
 import cv2
 import face_recognition as FR
