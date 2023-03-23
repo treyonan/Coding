@@ -48,13 +48,15 @@ logger.debug("Current rates: {exchange_rates}".format(exchange_rates=exchange_ra
 currency = convert("EUR", "USD", 45)
 print(currency)
 
-# Logging to a File ----------------------------------------------------------------
+# Logging to a File and Console ----------------------------------------------------------------
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-file_handler = logging.FileHandler("output.log")
+file_handler = logging.FileHandler("calculator.log")
 logger.addHandler(file_handler)
-        
+stream_handler = logging.StreamHandler(sys.stdout)
+logger.addHandler(stream_handler)        
+
 def division():
   logger.debug("Starting Division!")
   try:
@@ -69,7 +71,43 @@ def division():
     logger.error("Attempting to divide by 0!")
     return
   else:
-      return dividend/divisor
+    return dividend/divisor
+
 result = division()
 if result == None:
- logger.warning("The result value is None!")
+  logger.warning("The result value is None!")
+
+
+# Formatting the Logs ---------------------------------
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+file_handler = logging.FileHandler("formatted.log")
+stream_handler = logging.StreamHandler(sys.stdout)
+formatter1 = logging.Formatter("[%(asctime)s] {%(levelname)s} %(name)s: #%(lineno)d - %(message)s")
+formatter2 = logging.Formatter("[%(asctime)s] {%(levelname)s} - %(message)s")
+file_handler.setFormatter(formatter1)
+stream_handler.setFormatter(formatter2)
+logger.addHandler(file_handler)
+logger.addHandler(stream_handler)
+
+       
+def division():
+  logger.debug("Starting Division!")
+  try:
+    dividend = float(input("Enter the dividend: "))
+    logger.info(dividend)
+    divisor = float(input("Enter the divisor: "))
+    logger.info(divisor)
+  except SyntaxError:
+    logger.log(logging.CRITICAL, "No dividend or divisor value entered!")
+    return
+  if divisor == 0:
+    logger.error("Attempting to divide by 0!")
+    return
+  else:
+    return dividend/divisor
+
+result = division()
+if result == None:
+  logger.warning("The result value is None!")
