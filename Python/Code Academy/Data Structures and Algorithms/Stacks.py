@@ -47,7 +47,7 @@ pizza_stack.push("pizza #5")
 pizza_stack.push("pizza #6")
 
 # Uncomment the push() statement below:
-#pizza_stack.push("pizza #7")
+pizza_stack.push("pizza #7")
 
 # Delivering pizzas from the top of the stack down
 print("The first pizza to deliver is " + pizza_stack.peek())
@@ -59,4 +59,4 @@ pizza_stack.pop()
 pizza_stack.pop()
 
 # Uncomment the pop() statement below:
-#pizza_stack.pop()
+pizza_stack.pop()
