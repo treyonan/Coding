@@ -32,3 +32,69 @@ def sum_to_one(n):
 
 # uncomment when you're ready to test
 print(sum_to_one(7))
+
+# Factorial -------------------------------------------
+
+def factorial(n):
+  if n == 1:
+    return n
+  else:
+    return n * factorial(n-1)
+    
+print(factorial(12))
+
+# Power set ------------------------------------------
+
+def power_set(my_list):
+    # base case: an empty list
+    if len(my_list) == 0:
+        return [[]]
+    # recursive step: subsets without first element
+    power_set_without_first = power_set(my_list[1:])
+    # subsets with first element
+    with_first = [ [my_list[0]] + rest for rest in power_set_without_first ]
+    # return combination of the two
+    return with_first + power_set_without_first
+  
+universities = ['MIT', 'UCLA', 'Stanford', 'NYU']
+power_set_of_universities = power_set(universities)
+
+for set in power_set_of_universities:
+  print(set)
+
+# flatten ----------------------------------
+
+def flatten(my_list):
+  result = []
+  for el in my_list:
+    if isinstance(el, list):
+      print("list found!")
+      flat_list = flatten(el)
+      result += flat_list
+    else:
+      result.append(el)
+  return result
+
+
+### reserve for testing...
+planets = ['mercury', 'venus', ['earth'], 'mars', [['jupiter', 'saturn']], 'uranus', ['neptune', 'pluto']]
+print(flatten(planets))
+
+# fibonacci -------------------------------------
+
+def fibonacci(n):
+  # base cases
+  if n == 1:
+    return n
+  if n == 0:
+    return n
+  
+  # recursive step
+  print("Recursive call with {0} as input".format(n))
+  return fibonacci(n - 1) + fibonacci(n - 2)
+
+
+fibonacci(5)
+# set the appropriate runtime:
+# 1, logN, N, N^2, 2^N, N!
+fibonacci_runtime = "2^N"
