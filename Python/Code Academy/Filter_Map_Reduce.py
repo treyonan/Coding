@@ -91,3 +91,43 @@ product = -1
 product = reduce(lambda x, y: x * y, map(lambda z: z + 5, filter(lambda q: q < 10, nums)))
 
 print(product)
+
+# Working with CSV Files and Higher Order Functions ----------------------------------
+
+import csv
+from collections import namedtuple
+from functools import reduce
+
+tree = namedtuple("tree", ["index", "width", "height", "volume"]) 
+
+with open('trees.csv', newline = '') as csvfile:
+  reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+  next(reader)
+  mapper = map(lambda x: tree(int(x[0].strip()), float(x[1]), int(x[2]), float(x[3])), reader)
+  
+  t = filter(lambda x: x.height > 75, mapper)
+  trees = tuple(t)
+  widest = reduce(lambda x, y: x if x.width > y.width else y, trees)
+  print(widest)
+
+  # Processing Data From JSON File ---------------------------------
+
+  import json
+from collections import namedtuple
+from functools import reduce
+
+city = namedtuple("city", ["name", "country", "coordinates", "continent"])
+
+with open('cities.json') as json_file:
+  data = json.load(json_file) 
+
+cities = map(lambda x: city(x["name"], x["country"], x["coordinates"], x["continent"]), data["city"])
+
+asia = tuple(filter(lambda x: x.continent == "Asia", cities))
+print(asia)
+
+west = None
+
+west = reduce(lambda x, y: x if x.coordinates[1] < y.coordinates[1] else y, asia)
+
+print(west)
