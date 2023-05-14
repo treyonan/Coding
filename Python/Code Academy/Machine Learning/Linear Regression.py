@@ -103,6 +103,8 @@ m = 0
 b, m = step_gradient(months, revenue, b, m)
 print(b, m)
 
+# Convergence ----------------------------------------------------------------
+
 def get_gradient_at_b(x, y, b, m):
   N = len(x)
   diff = 0
