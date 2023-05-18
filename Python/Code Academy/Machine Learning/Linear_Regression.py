@@ -155,6 +155,56 @@ plt.plot(months, y)
 
 plt.show()
 
+# Scikit Learn Linear Regression -------------------------------
+
+import codecademylib3_seaborn
+from sklearn.linear_model import LinearRegression
+import matplotlib.pyplot as plt
+import numpy as np
+
+temperature = np.array(range(60, 100, 2))
+temperature = temperature.reshape(-1, 1)
+sales = [65, 58, 46, 45, 44, 42, 40, 40, 36, 38, 38, 28, 30, 22, 27, 25, 25, 20, 15, 5]
+
+line_fitter = LinearRegression()
+line_fitter.fit(temperature, sales)
+sales_predict = line_fitter.predict(temperature)
+
+plt.plot(temperature, sales, 'o')
+plt.plot(temperature, sales_predict, 'o')
+plt.show()
+
+# Example 2 ---------------------------------
+
+import codecademylib3_seaborn
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+from sklearn.datasets import load_boston
+
+# Boston housing dataset
+boston = load_boston()
+
+df = pd.DataFrame(boston.data, columns = boston.feature_names)
+
+# Set the x-values to the nitrogen oxide concentration:
+X = df[['NOX']]
+# Y-values are the prices:
+y = boston.target
+
+# Can we do linear regression on this?
+line_fitter = LinearRegression()
+line_fitter.fit(X,y)
+predict = line_fitter.predict(X)
+
+plt.scatter(X, y, alpha=0.4)
+# Plot line here:
+plt.plot(X, predict, 'o')
+plt.title("Boston Housing Dataset")
+plt.xlabel("Nitric Oxides Concentration")
+plt.ylabel("House Price ($)")
+plt.show()
+
 
 
 
