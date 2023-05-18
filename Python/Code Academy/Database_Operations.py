@@ -64,5 +64,41 @@ print(all_rows)
 all_survived = curs.execute('''SELECT * FROM titanic WHERE Survived = 1;''').fetchall()
 print(all_survived)
 
+# Using Loops with SQLite ----------------------------------
+
+import sqlite3
+
+con = sqlite3.connect("titanic.db")
+curs = con.cursor()
+
+# Pull the Age records from the titanic table using .fetchall() method and save as age
+age = curs.execute("SELECT Age FROM titanic;").fetchall()
+
+# for loop that calculates the average
+sum = 0
+
+for x in age:
+  if x[0] < 18:
+    sum += x[0]
+
+print(sum)
+
+# Committing Changes and Closing the Database Connection -------------------------
+
+from start import helper
+helper()
+import sqlite3
+
+con = sqlite3.connect("titanic.db")
+curs = con.cursor()
+
+# insert a row in new_table table
+curs.execute('''INSERT INTO new_table VALUES ('Stephanie Bready', 37, 'stephB423', 30.00)''')
+# commit this change
+con.commit()
+# close the connection
+con.close()
+
+
 
 
