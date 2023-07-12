@@ -40,8 +40,7 @@ import threading
 def greeting_with_sleep(string):
   print(string)
   time.sleep(2)
-  print("says hello!")
-
+  print(string + " says hello!")
 
 def main_threading():
   s = time.perf_counter()
