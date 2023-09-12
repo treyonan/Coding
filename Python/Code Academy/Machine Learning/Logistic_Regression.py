@@ -37,3 +37,28 @@ plt.tight_layout()
 
 # Show the plot
 plt.show()
+
+# Log Odds --------------------------------------
+
+import numpy as np
+from exam import hours_studied, calculated_coefficients, intercept
+
+# Calculate odds_of_rain
+p = 0.4
+odds_of_rain = p/(1-p)
+print(odds_of_rain)
+
+
+# Calculate log_odds_of_rain
+log_odds_of_rain = np.log(odds_of_rain)
+print(log_odds_of_rain)
+
+
+# Calculate odds_on_time
+p = .90
+odds_on_time = p/(1-p)
+
+
+# Calculate log_odds_on_time
+log_odds_on_time = np.log(odds_on_time)
+
