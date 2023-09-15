@@ -87,3 +87,103 @@ print(log_odds)
 # Calculate pred_probability_passing here
 pred_probability_passing = np.exp(log_odds)/(1+np.exp(log_odds))
 print(pred_probability_passing)
+
+# Fitting a model in sklearn ------------------
+
+# Import pandas and the data
+import pandas as pd
+codecademyU = pd.read_csv('codecademyU_2.csv')
+
+# Separate out X and y
+X = codecademyU[['hours_studied', 'practice_test']]
+y = codecademyU.passed_exam
+
+# Transform X
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+scaler.fit(X)
+X = scaler.transform(X)
+
+# Split data into training and testing sets
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state = 27)
+
+# Create and fit the logistic regression model here:
+from sklearn.linear_model import LogisticRegression
+cc_lr = LogisticRegression()
+cc_lr.fit(X_train, y_train)
+
+
+# Print the intercept and coefficients here:
+print(cc_lr.coef_)
+print(cc_lr.intercept_)
+
+# Predictions in sklearn -----------------
+
+# Import pandas and the data
+import pandas as pd
+codecademyU = pd.read_csv('codecademyU_2.csv')
+
+# Separate out X and y
+X = codecademyU[['hours_studied', 'practice_test']]
+y = codecademyU.passed_exam
+
+# Transform X
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+scaler.fit(X)
+X = scaler.transform(X)
+
+# Split data into training and testing sets
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state = 27)
+
+# Create and fit the logistic regression model here:
+from sklearn.linear_model import LogisticRegression
+cc_lr = LogisticRegression()
+cc_lr.fit(X_train,y_train)
+
+# Print out the predicted outcomes for the test data
+print(cc_lr.predict(X_test))
+# Print out the predicted probabilities for the test data
+print(cc_lr.predict_proba(X_test)[:,1])
+
+# Print out the true outcomes for the test data
+print(y_test)
+
+# Confusion Matrix ---------------
+
+# Import pandas and the data
+import pandas as pd
+codecademyU = pd.read_csv('codecademyU_2.csv')
+
+# Separate out X and y
+X = codecademyU[['hours_studied', 'practice_test']]
+y = codecademyU.passed_exam
+
+# Transform X
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+scaler.fit(X)
+X = scaler.transform(X)
+
+# Split data into training and testing sets
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state = 27)
+
+# Create and fit the logistic regression model here:
+from sklearn.linear_model import LogisticRegression
+cc_lr = LogisticRegression()
+cc_lr.fit(X_train,y_train)
+
+# Save and print the predicted outcomes
+y_pred = cc_lr.predict(X_test)
+print('predicted classes: ', y_pred)
+
+# Print out the true outcomes for the test data
+print('true classes: ', y_test)
+
+# Print out the confusion matrix here
+from sklearn.metrics import confusion_matrix
+print(confusion_matrix(y_test, y_pred))
+
