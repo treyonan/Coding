@@ -1,0 +1,5 @@
+HOST = "127.0.0.1"
+PORT = "5432"
+DATABASE = "ICC2021"
+USER =  # type in your postgreSQL username here ""
+PASSWORD =  # type in your postgreSQL password here ""
