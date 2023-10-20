@@ -202,3 +202,37 @@ classifier.fit(training_points, training_labels)
 print(classifier.score(testing_points, testing_labels))
 
 print(classifier.tree_.max_depth)
+
+# Random Forests ---------------------------------------------------
+
+from tree import build_tree, print_tree, car_data, car_labels, classify
+from collections import Counter
+import random
+random.seed(4)
+
+# The features are the price of the car, the cost of maintenance, the number of doors, the number of people the car can hold, the size of the trunk, and the safety rating
+unlabeled_point = ['high', 'vhigh', '3', 'more', 'med', 'med']
+
+predictions = []
+for i in range(20):
+  indices = [random.randint(0, 999) for i in range(1000)]
+  data_subset = [car_data[index] for index in indices]
+  labels_subset = [car_labels[index] for index in indices]
+  subset_tree = build_tree(data_subset, labels_subset)
+  predictions.append(classify(unlabeled_point, subset_tree))
+final_prediction = max(predictions, key=predictions.count)
+print(final_prediction)
+
+# Random Forests in Scikit-learn ----------------------
+
+def warn(*args, **kwargs):
+    pass
+import warnings
+warnings.warn = warn
+from cars import training_points, training_labels, testing_points, testing_labels
+import warnings
+from sklearn.ensemble import RandomForestClassifier
+
+classifier = RandomForestClassifier(n_estimators = 2000, random_state = 0)
+classifier.fit(training_points, training_labels)
+print(classifier.score(testing_points, testing_labels))
