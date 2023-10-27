@@ -1,6 +1,6 @@
 # Perceptrons -----------------------------------------------------------------------------
 
-# Training set -----------------------------------------
+# Training set --------------------------------------------
 
 import codecademylib3_seaborn
 import matplotlib.pyplot as plt
