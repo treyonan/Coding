@@ -217,7 +217,7 @@ output = layer(input)
 # print the weights
 print(layer.weights) 
 
-# Neural network model: input, output and hidden layers. Optimizers -----------------------------
+# Neural network model: input, output and hidden layers. Optimizers -------------------------------
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -311,3 +311,12 @@ model.fit(features_train, labels_train, epochs = 40, batch_size = 1, verbose = 1
 val_mse, val_mae = model.evaluate(features_test, labels_test, verbose = 0)
  
 print("MAE: ", val_mae)
+
+# Using a validation set for hyperparameter tuning -----------------------------------
+
+from model import design_model, features_train, labels_train 
+
+model = design_model(features_train, learning_rate = 0.01)
+#your code here
+model.fit(features_train, labels_train, epochs = 40, batch_size = 8, verbose = 1, validation_split = 0.33 )
+
