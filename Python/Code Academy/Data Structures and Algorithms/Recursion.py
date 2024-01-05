@@ -99,7 +99,8 @@ fibonacci(5)
 # 1, logN, N, N^2, 2^N, N!
 fibonacci_runtime = "2^N"
 
-# Recursive dat structures -----------------------------------------------
+
+# Recursive data structures -----------------------------------------------
 
 def build_bst(my_list):
   if len(my_list) == 0:
