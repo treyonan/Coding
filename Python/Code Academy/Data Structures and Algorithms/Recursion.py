@@ -126,4 +126,41 @@ print(binary_search_tree)
 # 1, logN, N, N*logN, N^2, 2^N, N!
 runtime = "N*logN"
 
+# Recursion Vs. Iteration Examples ------------------------------------------------
 
+# Iterative Factorial
+
+def factorial(n):  
+  if n < 0:
+    return ValueError("Inputs 0 or greater only")
+  result = 1
+  while n != 0:
+    result *= n
+    n -= 1
+  return result
+
+# test cases
+print(factorial(3) == 6)
+print(factorial(0) == 1)
+print(factorial(5) == 120)
+
+# Iterative Fibonacci
+
+def fibonacci(n):
+  if n < 0:
+    ValueError("Input 0 or greater only!")
+
+  fibs = [0, 1]
+  
+  if n <= len(fibs) - 1:
+    return fibs[n]
+
+  while n > len(fibs) - 1:
+    fibs.append(fibs[-1] + fibs[-2])
+    
+  return fibs[-1]
+
+# test cases
+print(fibonacci(3) == 2)
+print(fibonacci(7) == 13)
+print(fibonacci(0) == 0)
