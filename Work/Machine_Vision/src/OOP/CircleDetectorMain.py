@@ -2,36 +2,31 @@ import cv2
 from lib.KMeansDetector import KMeansCircleDetector
 from lib.DBSCANDetector import DBSCANCircleDetector
 from lib.RandomCircleGenerator import update_image_periodically, stop_update_with_circles
-from lib.CircleArrangementDetector import CircleArrangementDetector
-
 
 def run_detection(detector, generate_circles=False):
-    cap = cv2.VideoCapture(0)
-    arrangement_detector = CircleArrangementDetector(eps=50, min_samples=1, sample_size=30)
-    frame_count = 0
+    cap = cv2.VideoCapture(1)
+    stop_event = None
+    if generate_circles:
+        window_name = "Random Circles"
+        stop_event = update_image_periodically(window_name, interval=5)  # Update every 5 seconds
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        
-        detected_circles = detector.detect_circles_and_draw(frame)
-        arrangement_detector.update_and_aggregate_counts(detected_circles)
-        
-        if frame_count % 30 == 0:
-            common_counts = arrangement_detector.get_most_common_counts()
-            print(f"Common circle counts per row: {common_counts}")
-            #arrangement_detector.reset_counts_history()
-
-        frame_count += 1
+        detector.detect_circles_and_draw(frame)
         cv2.imshow('Detection', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
             break
 
+    # Signal the thread to stop and ensure all windows are closed
+    if generate_circles:
+        stop_update_with_circles(stop_event)
+    
     cap.release()
+    # Ensure all OpenCV windows are closed
     cv2.destroyAllWindows()
-
-
 
 
 def main():
