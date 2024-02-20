@@ -4,6 +4,7 @@ from lib.DBSCANDetector import DBSCANCircleDetector
 from lib.RandomCircleGenerator import update_image_periodically, stop_update_with_circles
 from lib.CircleRowAnalyzer import detect_rows
 
+
 def run_detection(detector, generate_circles=False):
     cap = cv2.VideoCapture(1)
     stop_event = None
@@ -20,6 +21,8 @@ def run_detection(detector, generate_circles=False):
         if centroids:  # Ensure we have centroids to process
             detections_per_row = detect_rows(centroids)
             print(f"Detections per row: {detections_per_row}")
+            text = f'Detections per row: {", ".join(map(str, detections_per_row))}'
+            cv2.putText(frame, text, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         cv2.imshow('Detection', frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
