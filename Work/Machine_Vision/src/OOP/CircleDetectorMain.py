@@ -2,6 +2,7 @@ import cv2
 from lib.KMeansDetector import KMeansCircleDetector
 from lib.DBSCANDetector import DBSCANCircleDetector
 from lib.RandomCircleGenerator import update_image_periodically, stop_update_with_circles
+from lib.CircleRowAnalyzer import detect_rows
 
 def run_detection(detector, generate_circles=False):
     cap = cv2.VideoCapture(1)
@@ -14,7 +15,11 @@ def run_detection(detector, generate_circles=False):
         ret, frame = cap.read()
         if not ret:
             break
-        detector.detect_circles_and_draw(frame)
+        centroids = detector.detect_circles_and_draw(frame)
+        y_threshold = cv2.getTrackbarPos('Y Threshold', 'Settings')
+        if centroids:  # Ensure we have centroids to process
+            detections_per_row = detect_rows(centroids)
+            print(f"Detections per row: {detections_per_row}")
         cv2.imshow('Detection', frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):

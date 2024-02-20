@@ -1,4 +1,3 @@
-# CircleDetectionBase.py
 import cv2
 import numpy as np
 
@@ -10,17 +9,12 @@ class CircleDetectionBase:
     def init_trackbars(self):
         cv2.namedWindow(self.window_name)
         cv2.createTrackbar('dp', self.window_name, 1, 50, lambda x: None)
-        cv2.setTrackbarMin('dp', self.window_name, 1)
         cv2.createTrackbar('minDist', self.window_name, 21, 200, lambda x: None)
-        cv2.setTrackbarMin('minDist', self.window_name, 1)
         cv2.createTrackbar('param1', self.window_name, 35, 300, lambda x: None)
-        cv2.setTrackbarMin('param1', self.window_name, 1)
         cv2.createTrackbar('param2', self.window_name, 41, 100, lambda x: None)
-        cv2.setTrackbarMin('param2', self.window_name, 1)
         cv2.createTrackbar('minRadius', self.window_name, 0, 100, lambda x: None)
-        cv2.setTrackbarMin('minRadius', self.window_name, 0)
         cv2.createTrackbar('maxRadius', self.window_name, 52, 200, lambda x: None)
-        cv2.setTrackbarMin('maxRadius', self.window_name, 0)
+        cv2.createTrackbar('Y Threshold', self.window_name, 10, 100, lambda x: None)
 
     def detect_circles_and_draw(self, frame):
         dp = cv2.getTrackbarPos('dp', self.window_name) / 10.0
@@ -37,12 +31,19 @@ class CircleDetectionBase:
         centroids = []
         if detected_circles is not None:
             detected_circles = np.uint16(np.around(detected_circles))
-            num_circles = len(detected_circles[0, :])
             for circle in detected_circles[0, :]:
                 cv2.circle(frame, (circle[0], circle[1]), circle[2], (0, 255, 0), 2)
                 cv2.circle(frame, (circle[0], circle[1]), 2, (0, 0, 255), 3)
                 centroids.append([circle[0], circle[1]])
-            text = f'Circles detected: {num_circles}'
-            cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 
-                        1, (255, 255, 255), 2, cv2.LINE_AA)
+            #self.process_centroids(frame, centroids)
+
         return centroids
+
+    def process_centroids(self, frame, centroids):
+        # This method should be overridden by subclasses
+        raise NotImplementedError("Subclass must implement abstract method")
+
+
+
+
+
