@@ -6,7 +6,7 @@ from lib.CircleRowAnalyzer import detect_rows
 
 
 def run_detection(detector, generate_circles=False):
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
     stop_event = None
     if generate_circles:
         window_name = "Random Circles"
