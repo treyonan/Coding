@@ -19,7 +19,7 @@ def run_detection(detector, generate_circles=False):
         centroids = detector.detect_circles_and_draw(frame)
         y_threshold = cv2.getTrackbarPos('Y Threshold', 'Settings')
         if centroids:  # Ensure we have centroids to process
-            detections_per_row = detect_rows(centroids)
+            detections_per_row = detect_rows(centroids, y_threshold)
             print(f"Detections per row: {detections_per_row}")
             text = f'Detections per row: {", ".join(map(str, detections_per_row))}'
             cv2.putText(frame, text, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
