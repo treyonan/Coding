@@ -3,9 +3,10 @@ from lib.KMeansDetector import KMeansCircleDetector
 from lib.DBSCANDetector import DBSCANCircleDetector
 from lib.RandomCircleGenerator import update_image_periodically, stop_update_with_circles
 from lib.CircleRowAnalyzer import detect_rows
+from lib.detections_smoothing import DetectionsSmoothing
 
 
-def run_detection(detector, generate_circles=False):
+def run_detection(detector, smoother, generate_circles=False):
     cap = cv2.VideoCapture(0)
     stop_event = None
     if generate_circles:
@@ -16,12 +17,12 @@ def run_detection(detector, generate_circles=False):
         ret, frame = cap.read()
         if not ret:
             break
-        centroids = detector.detect_circles_and_draw(frame)
+        centroids = detector.detect_circles_and_draw(frame) # detect_circles_and_draw is currently only implemented in base class CircleDetectionBase.py
         y_threshold = cv2.getTrackbarPos('Y Threshold', 'Settings')
         if centroids:  # Ensure we have centroids to process
             detections_per_row = detect_rows(centroids, y_threshold)
-            print(f"Detections per row: {detections_per_row}")
-            text = f'Detections per row: {", ".join(map(str, detections_per_row))}'
+            smoothed_detections = smoother.calculate_mode_of_detections(detections_per_row)            
+            text = f'Detections per row: {", ".join(map(str, smoothed_detections))}'
             cv2.putText(frame, text, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         cv2.imshow('Detection', frame)
         key = cv2.waitKey(1) & 0xFF
@@ -52,7 +53,8 @@ def main():
         print("Invalid choice.")
         return
 
-    run_detection(detector, generate_circles)
+    smoother = DetectionsSmoothing(50)
+    run_detection(detector, smoother, generate_circles)
 
 if __name__ == "__main__":
     main()
