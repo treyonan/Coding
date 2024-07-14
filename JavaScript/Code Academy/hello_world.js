@@ -52,3 +52,12 @@ let newVariable = 'Playing around with typeof.';
 console.log(typeof newVariable);
 newVariable = 1;
 console.log(typeof newVariable);
+
+// constant for kelvin
+const kelvin = 50;
+// constant for celsius is kelvin minus 273
+const celsius = kelvin - 273;
+// fahrenheit
+const fahrenheit = Math.floor(celsius * (9/5) + 32);
+
+console.log(`The temperature is ${fahrenheit} degrees Fahrenheit`);
