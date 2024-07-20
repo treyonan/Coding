@@ -61,3 +61,41 @@ const celsius = kelvin - 273;
 const fahrenheit = Math.floor(celsius * (9/5) + 32);
 
 console.log(`The temperature is ${fahrenheit} degrees Fahrenheit`);
+
+//ternary operator
+
+let isLocked = false;
+
+isLocked ? console.log('You will need a key to open the door.')
+: console.log('You will not need a key to open the door.')
+
+
+let isCorrect = true;
+
+isCorrect ? console.log('Correct!')
+: console.log('Incorrect!')
+
+
+let favoritePhrase = 'Love That!';
+
+favoritePhrase === 'Love That!' ? console.log('I love that!')
+: console.log("I don't love that!")
+
+// switch statements
+
+let athleteFinalPosition = 'first place';
+
+switch(athleteFinalPosition){
+  case 'first place':
+    console.log('You get the gold medal!');
+    break;
+  case 'second place':
+    console.log('You get the silver medal!');
+    break;
+  case 'third place':
+    console.log('You get the bronze medal!');
+    break;
+  default:
+    console.log('No medal awarded.');
+    break;
+}
