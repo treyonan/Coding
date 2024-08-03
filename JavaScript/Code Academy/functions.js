@@ -1,65 +1,129 @@
 function sayThanks(name) {
-    console.log('Thank you for your purchase '+ name + '! We appreciate your business.');
+  console.log('Thank you for your purchase ' + name + '! We appreciate your business.');
+}
+
+sayThanks('Cole');
+
+// Default parameters
+
+function greeting(name = 'stranger') {
+  console.log(`Hello, ${name}!`)
+}
+
+greeting('Nick') // Output: Hello, Nick!
+greeting() // Output: Hello, stranger!
+
+// Return values
+
+function monitorCount(rows, columns) {
+  return rows * columns;
+}
+
+const numOfMonitors = monitorCount(5, 4);
+
+console.log(numOfMonitors);
+
+//------------------------------------------------
+
+function monitorCount(rows, columns) {
+  return rows * columns;
+}
+
+function costOfMonitors(rows, columns) {
+  return monitorCount(rows, columns) * 200;
+}
+
+const totalCost = costOfMonitors(5, 4);
+
+console.log(totalCost);
+
+// Function Expressions
+
+const plantNeedsWater = function (day) {
+  if (day === 'Wednesday') {
+    return true;
+  } else {
+    return false;
   }
-  
-  sayThanks('Cole');
+};
 
-  // Default parameters
+console.log(plantNeedsWater('Tuesday'));
 
-  function greeting (name = 'stranger') {
-    console.log(`Hello, ${name}!`)
+// Arrow Functions
+
+const plantNeedsWater = (day) => {
+  if (day === 'Wednesday') {
+    return true;
+  } else {
+    return false;
   }
-  
-  greeting('Nick') // Output: Hello, Nick!
-  greeting() // Output: Hello, stranger!
+};
 
-  // Return values
+// Concise Body Arrow Functions
 
-  function monitorCount(rows, columns) {
-    return rows * columns;
+const plantNeedsWater = day => day === 'Wednesday' ? true : false;
+
+
+// Rock, Paper or Scissors Project
+
+console.log('hi');
+
+const getUserChoice = userInput => {
+  userInput = userInput.toLowerCase();
+  if (userInput === 'rock' || userInput === 'paper' || userInput === 'scissors' || userInput === 'bomb') {
+    return userInput
+  } else {
+    console.log('Error message');
   }
-  
-  const numOfMonitors = monitorCount(5, 4);
-  
-  console.log(numOfMonitors);
+}
 
-  //------------------------------------------------
-
-  function monitorCount(rows, columns) {
-    return rows * columns;
+function getComputerChoice() {
+  num = Math.floor(Math.random() * 3);
+  if (num === 0) {
+    return 'rock';
+  } else if (num === 1) {
+    return 'paper';
+  } else if (num === 2) {
+    return 'scissors';
   }
-  
-  function costOfMonitors(rows, columns) {
-    return monitorCount(rows, columns) * 200;
+}
+
+function determineWinner(userChoice, computerChoice) {
+  if (userChoice === computerChoice) {
+    return 'Tie game';
   }
-  
-  const totalCost = costOfMonitors(5, 4);
-  
-  console.log(totalCost);
-
-  // Function Expressions
-
-  const plantNeedsWater = function(day) {
-    if (day === 'Wednesday') {
-      return true;
+  if (userChoice === 'rock') {
+    if (computerChoice === 'paper') {
+      return 'computer won';
     } else {
-      return false;
+      return 'user won';
     }
-  };
-  
-  console.log(plantNeedsWater('Tuesday'));
-
-  // Arrow Functions
-
-  const plantNeedsWater = (day) => {
-    if (day === 'Wednesday') {
-      return true;
+  }
+  if (userChoice === 'paper') {
+    if (computerChoice === 'scissors') {
+      return 'computer won';
     } else {
-      return false;
+      return 'user won';
     }
-  };
+  }
+  if (userChoice === 'scissors') {
+    if (computerChoice === 'rock') {
+      return 'computer won';
+    } else {
+      return 'user won';
+    }
+  }
+  if (userChoice === 'bomb') {
+    return 'user won';
+  }
+}
 
-  // Concise Body Arrow Functions
+function playGame() {
+  let userChoice = getUserChoice('paper');
+  let computerChoice = getComputerChoice();
+  console.log(determineWinner(userChoice, computerChoice));
+}
 
-  const plantNeedsWater = day => day === 'Wednesday' ? true : false;
-  
+playGame();
+
+
