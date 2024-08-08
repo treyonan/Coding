@@ -127,3 +127,48 @@ function playGame() {
 playGame();
 
 
+// Sleep Debt Project
+
+function getSleepHours(day) {
+  if (day === 'monday') {
+    return 7;
+  } else if (day === 'tuesday') {
+    return 8;
+  } else if (day === 'wednesday') {
+    return 8;
+  } else if (day === 'thursday') {
+    return 6;
+  } else if (day === 'friday') {
+    return 8;
+  } else if (day === 'saturday') {
+    return 8;
+  } else if (day === 'sunday') {
+    return 8;
+  } else {
+    return 0;
+  }
+}
+
+function getActualSleepHours() {
+  let actualSleepHours = getSleepHours('monday') + getSleepHours('tuesday') + getSleepHours('wednesday') + getSleepHours('thursday') + getSleepHours('friday') + getSleepHours('saturday') + getSleepHours('sunday');
+  return actualSleepHours;
+}
+
+function getIdealSleepHours() {
+  let idealSleepHours = 8;
+  return idealSleepHours * 7;
+}
+
+function calculateSleepDebt() {
+  let actualSleepHours = getActualSleepHours();
+  let idealSleepHours = getIdealSleepHours();
+  if (actualSleepHours === idealSleepHours) {
+    console.log('perfect amount of sleep');
+  } else if (actualSleepHours < idealSleepHours) {
+    console.log(`you need ${idealSleepHours - actualSleepHours} more hours of rest`);
+  } else if (actualSleepHours > idealSleepHours) {
+    console.log(`you slept ${actualSleepHours - idealSleepHours} more hours than needed`); 
+  }
+}
+
+calculateSleepDebt();
