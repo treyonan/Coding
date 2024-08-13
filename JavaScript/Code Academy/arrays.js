@@ -95,3 +95,21 @@ console.log(concept);
 const numberClusters = [[1, 2], [3, 4], [5, 6]];
 
 const target = numberClusters[2][1];
+
+// Secret Message Project
+
+let secretMessage = ['Learning', 'is', 'not', 'about', 'what', 'you', 'get', 'easily', 'the', 'first', 'time,', 'it', 'is', 'about', 'what', 'you', 'can', 'figure', 'out.', '-2015,', 'Chris', 'Pine,', 'Learn', 'JavaScript'];
+
+secretMessage.pop(); // remove last element
+console.log(secretMessage);
+console.log(secretMessage.length); // print length
+secretMessage[7] = 'right'; // replace element 7 with 'right'
+console.log(secretMessage);
+secretMessage.shift(); // remove first element
+console.log(secretMessage);
+secretMessage.unshift('Programming'); // Add programming to front
+console.log(secretMessage);
+let startIndex = secretMessage.indexOf('get');
+secretMessage.splice(startIndex, 5, 'know,');
+console.log(secretMessage);
+console.log(secretMessage.join(' '));
