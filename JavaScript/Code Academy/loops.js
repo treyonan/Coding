@@ -61,3 +61,29 @@ for (let i = 0; i < rapperArray.length; i++){
 }
 
 console.log("And if you don't know, now you know.");
+
+// Whale Talk Project
+
+let input = 'what the heck is up man';
+let vowels = ['a', 'e', 'i', 'o', 'u'];
+let resultArray = [];
+
+for (i = 0; i < input.length; i++) {
+  if (input[i] === 'e') {
+    resultArray.push(input[i]);
+  }
+  if (input[i] === 'u') {
+    resultArray.push(input[i]);
+  }
+  for (j = 0; j < vowels.length; j++) {
+    if (input[i] === vowels[j]) {
+      //console.log(`match at element ${i}`);
+      resultArray.push(input[i]);
+      
+    }
+  }
+}
+
+let resultString = resultArray.join('').toUpperCase();
+console.log(resultString);
+
