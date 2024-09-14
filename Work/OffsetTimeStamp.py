@@ -1,3 +1,34 @@
+import math
+
+'''
+inOffset = 1525
+inYear = 2024
+inMonth = 9
+inDay = 13
+inHour = 15
+inMinute = 30
+'''
+
+def CalculateOffset(inDay, inHour, inMinute, inOffset):
+    _MinutesInDay = 1440
+    _MinutesInHour = 60
+    _Days = math.floor(inOffset/_MinutesInDay)
+    _DayRemainder = inOffset % _MinutesInDay
+    _Hours = math.floor(_DayRemainder/_MinutesInHour)
+    _HoursRemainder = _DayRemainder % _MinutesInHour
+    _Minutes = _HoursRemainder
+    outDay = inDay + _Days
+    outHour = inHour + _Hours + math.floor((inMinute + _Minutes) / 60)
+    outMinute = (inMinute + _Minutes) % 60
+    return outDay, outHour, outMinute
+
+NewTime = CalculateOffset(13, 15, 30, 1530)
+
+for i in NewTime:
+    print(i)
+
+
+'''
 def calculate_offset(year, month, day, hour, minute, offset_minutes):
     # Calculate the number of days in the current month
     if month in [1, 3, 5, 7, 8, 10, 12]:
@@ -66,3 +97,4 @@ offset = 120
 # Call the function
 new_timestamp = calculate_offset(current_year, current_month, current_day, current_hour, current_minute, offset)
 print(new_timestamp)
+'''
