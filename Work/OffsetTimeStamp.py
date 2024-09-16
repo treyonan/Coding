@@ -71,6 +71,10 @@ def run_tests():
         {"year": 2024, "month": 9, "day": 13, "hour": 15, "minute": 26, "offset": 1440, "expected": "2024-09-14 15:26"},
         {"year": 2024, "month": 9, "day": 13, "hour": 15, "minute": 26, "offset": 2880, "expected": "2024-09-15 15:26"},
         {"year": 2024, "month": 9, "day": 13, "hour": 15, "minute": 26, "offset": 525600, "expected": "2025-09-13 15:26"},
+        {"year": 2023, "month": 12, "day": 31, "hour": 23, "minute": 59, "offset": 1, "expected": "2024-01-01 00:00"},
+        {"year": 2024, "month": 2, "day": 28, "hour": 23, "minute": 59, "offset": 2, "expected": "2024-03-01 00:01"},
+        {"year": 2024, "month": 2, "day": 29, "hour": 12, "minute": 0, "offset": 1440, "expected": "2024-03-01 12:00"},
+        {"year": 2024, "month": 12, "day": 31, "hour": 23, "minute": 59, "offset": 1440, "expected": "2025-01-01 23:59"},
     ]
 
     for test in test_cases:
