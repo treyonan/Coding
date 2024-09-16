@@ -13,7 +13,10 @@ def CalculateOffset(inDay, inHour, inMinute, inOffset):
     outMinute = (inMinute + _Minutes) % 60
     return outDay, outHour, outMinute
 
-NewTime = CalculateOffset(13, 15, 0, 1530)
+NewTime = CalculateOffset(13, 23, 30, 9000)
+
+for i in NewTime:
+    print(i)
 
 daysInMonth = [25, 25, 25, 25, 25]
 
@@ -28,4 +31,5 @@ for i in range(len(daysInMonth)):
         break
     CurrentDayInYear = CurrentDayInYear + daysInMonth[i]
 
-print(CurrentDayInYear)
+#print(CurrentDayInYear)
+
