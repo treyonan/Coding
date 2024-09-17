@@ -167,3 +167,5 @@ const handleFailure = (rejectReason) => {
 
 // Write your code below:
 checkInventory(order).then(handleSuccess).catch(handleFailure);
+
+
