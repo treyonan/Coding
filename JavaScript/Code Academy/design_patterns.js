@@ -1,5 +1,4 @@
 /*
-
 Design Patterns in JavaScript
 Learn about common design patterns in JavaScript.
 
