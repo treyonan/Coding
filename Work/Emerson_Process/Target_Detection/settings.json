@@ -1,0 +1,15 @@
+{
+  "camera_index": 1,
+  "frame_width": 640,
+  "frame_height": 480,
+  "target1": {
+    "x": 150,
+    "y": 110,
+    "diameter": 69
+  },
+  "target2": {
+    "x": 342,
+    "y": 240,
+    "diameter": 40
+  }
+}

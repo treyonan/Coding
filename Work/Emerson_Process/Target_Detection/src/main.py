@@ -2,6 +2,8 @@ import cv2
 import customtkinter as ctk
 import tkinter as tk
 import threading
+import json
+import os
 
 CAMERA_INDEX = 1
 FRAME_WIDTH = 640
@@ -19,6 +21,74 @@ TARGET2_DIAMETER = 40  # pixels
 
 # Shared state for GUI and camera thread
 _stop_event = threading.Event()
+
+
+def _settings_path():
+    # Save settings one directory up from src/, at project root
+    base_dir = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), os.pardir))
+    return os.path.join(base_dir, "settings.json")
+
+
+def load_settings():
+    global CAMERA_INDEX, TARGET1_REL_X, TARGET1_REL_Y, TARGET1_DIAMETER
+    global TARGET2_REL_X, TARGET2_REL_Y, TARGET2_DIAMETER
+
+    path = _settings_path()
+    if not os.path.exists(path):
+        return
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"Warning: Failed to load settings: {e}")
+        return
+
+    try:
+        CAMERA_INDEX = int(data.get("camera_index", CAMERA_INDEX))
+        fw = int(data.get("frame_width", FRAME_WIDTH)) or FRAME_WIDTH
+        fh = int(data.get("frame_height", FRAME_HEIGHT)) or FRAME_HEIGHT
+
+        t1 = data.get("target1", {})
+        t1x = int(t1.get("x", int(TARGET1_REL_X * fw)))
+        t1y = int(t1.get("y", int(TARGET1_REL_Y * fh)))
+        TARGET1_DIAMETER = int(t1.get("diameter", TARGET1_DIAMETER))
+        # Convert to relative for internal state
+        TARGET1_REL_X = max(0.0, min(1.0, t1x / fw))
+        TARGET1_REL_Y = max(0.0, min(1.0, t1y / fh))
+
+        t2 = data.get("target2", {})
+        t2x = int(t2.get("x", int(TARGET2_REL_X * fw)))
+        t2y = int(t2.get("y", int(TARGET2_REL_Y * fh)))
+        TARGET2_DIAMETER = int(t2.get("diameter", TARGET2_DIAMETER))
+        TARGET2_REL_X = max(0.0, min(1.0, t2x / fw))
+        TARGET2_REL_Y = max(0.0, min(1.0, t2y / fh))
+    except Exception as e:
+        print(f"Warning: Invalid settings content, using defaults: {e}")
+
+
+def save_settings():
+    # Persist pixel-based positions for the configured frame size
+    t1x = int(TARGET1_REL_X * FRAME_WIDTH)
+    t1y = int(TARGET1_REL_Y * FRAME_HEIGHT)
+    t2x = int(TARGET2_REL_X * FRAME_WIDTH)
+    t2y = int(TARGET2_REL_Y * FRAME_HEIGHT)
+
+    data = {
+        "camera_index": CAMERA_INDEX,
+        "frame_width": FRAME_WIDTH,
+        "frame_height": FRAME_HEIGHT,
+        "target1": {"x": t1x, "y": t1y, "diameter": int(TARGET1_DIAMETER)},
+        "target2": {"x": t2x, "y": t2y, "diameter": int(TARGET2_DIAMETER)},
+    }
+
+    path = _settings_path()
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"Warning: Failed to save settings: {e}")
 
 
 def detect_largest_red_circle(frame):
@@ -140,6 +210,11 @@ def run_camera(stop_event: threading.Event):
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
+                # Save once when quitting via keyboard
+                try:
+                    save_settings()
+                except Exception:
+                    pass
                 stop_event.set()
                 break
 
@@ -159,6 +234,11 @@ def start_gui(stop_event: threading.Event):
     def _poll_stop():
         if stop_event.is_set():
             try:
+                # Save before closing if needed
+                try:
+                    save_settings()
+                except Exception:
+                    pass
                 root.destroy()
             except Exception:
                 pass
@@ -294,6 +374,9 @@ def start_gui(stop_event: threading.Event):
 
 
 def main():
+    # Load persisted settings (if available)
+    load_settings()
+
     # Start camera processing in a background thread
     cam_thread = threading.Thread(
         target=run_camera, args=(_stop_event,), daemon=True)
