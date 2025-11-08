@@ -135,7 +135,9 @@ def detect_red_circles(frame, max_count: int = 2):
     if circles is not None and len(circles) > 0:
         h, w = mask.shape[:2]
         for (x_f, y_f, r_f) in circles[0]:
-            x = int(x_f); y = int(y_f); r = int(r_f)
+            x = int(x_f)
+            y = int(y_f)
+            r = int(r_f)
             # Skip degenerate
             if r <= 0:
                 continue
@@ -151,7 +153,8 @@ def detect_red_circles(frame, max_count: int = 2):
             sub = mask[y0:y1, x0:x1]
 
             # Find the largest contour in this ROI
-            cnts, _ = cv2.findContours(sub, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cnts, _ = cv2.findContours(
+                sub, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if not cnts:
                 continue
             cnt = max(cnts, key=cv2.contourArea)
@@ -166,7 +169,8 @@ def detect_red_circles(frame, max_count: int = 2):
             # Create a circular mask within ROI
             circle_mask = sub.copy()
             circle_mask[:] = 0
-            cv2.circle(circle_mask, (x - x0, y - y0), r, color=255, thickness=-1)
+            cv2.circle(circle_mask, (x - x0, y - y0),
+                       r, color=255, thickness=-1)
             filled = cv2.bitwise_and(sub, circle_mask)
             red_area_inside_circle = float(cv2.countNonZero(filled))
             circle_area = math.pi * (r ** 2)
@@ -178,7 +182,8 @@ def detect_red_circles(frame, max_count: int = 2):
 
     # If we still have fewer than desired circles, upsample mask and try again
     if len(candidates) < max_count:
-        mask_up = cv2.resize(mask, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_LINEAR)
+        mask_up = cv2.resize(mask, None, fx=2.0, fy=2.0,
+                             interpolation=cv2.INTER_LINEAR)
         circles2 = cv2.HoughCircles(
             mask_up,
             cv2.HOUGH_GRADIENT,
@@ -192,7 +197,9 @@ def detect_red_circles(frame, max_count: int = 2):
         if circles2 is not None and len(circles2) > 0:
             h, w = mask.shape[:2]
             for (x2, y2, r2) in circles2[0]:
-                x = int(round(x2 / 2.0)); y = int(round(y2 / 2.0)); r = int(round(r2 / 2.0))
+                x = int(round(x2 / 2.0))
+                y = int(round(y2 / 2.0))
+                r = int(round(r2 / 2.0))
                 if r <= 0:
                     continue
                 # Validate at original scale using the same criteria
@@ -203,7 +210,8 @@ def detect_red_circles(frame, max_count: int = 2):
                 if x1 <= x0 or y1 <= y0:
                     continue
                 sub = mask[y0:y1, x0:x1]
-                cnts, _ = cv2.findContours(sub, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                cnts, _ = cv2.findContours(
+                    sub, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 if not cnts:
                     continue
                 cnt = max(cnts, key=cv2.contourArea)
@@ -212,8 +220,10 @@ def detect_red_circles(frame, max_count: int = 2):
                 if perim <= 0.0 or area <= 0.0:
                     continue
                 circularity = 4.0 * math.pi * area / (perim * perim)
-                circle_mask = sub.copy(); circle_mask[:] = 0
-                cv2.circle(circle_mask, (x - x0, y - y0), r, color=255, thickness=-1)
+                circle_mask = sub.copy()
+                circle_mask[:] = 0
+                cv2.circle(circle_mask, (x - x0, y - y0),
+                           r, color=255, thickness=-1)
                 filled = cv2.bitwise_and(sub, circle_mask)
                 red_area_inside_circle = float(cv2.countNonZero(filled))
                 circle_area = math.pi * (r ** 2)

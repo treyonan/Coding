@@ -3,14 +3,14 @@
   "frame_width": 640,
   "frame_height": 480,
   "target1": {
-    "x": 163,
-    "y": 163,
-    "diameter": 16
+    "x": 285,
+    "y": 228,
+    "diameter": 23
   },
   "target2": {
-    "x": 269,
+    "x": 230,
     "y": 250,
     "diameter": 16
   },
-  "deadband_px": 2
+  "deadband_px": 1
 }
