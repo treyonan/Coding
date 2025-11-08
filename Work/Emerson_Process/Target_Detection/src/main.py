@@ -4,6 +4,7 @@ import tkinter as tk
 import threading
 import json
 import os
+import math
 
 CAMERA_INDEX = 1
 FRAME_WIDTH = 640
@@ -91,14 +92,12 @@ def save_settings():
         print(f"Warning: Failed to save settings: {e}")
 
 
-def detect_largest_red_circle(frame):
-    """Return (x, y, r) for the largest red circle found, else None.
-    Uses HSV thresholding to isolate red, then HoughCircles on the mask.
+def detect_red_circles(frame, max_count: int = 2):
+    """Return up to `max_count` red circles as a list of (x, y, r).
+    HSV thresholding for red + morphology + HoughCircles.
     """
-    # Slight blur to reduce noise before HSV thresholding
     blurred = cv2.GaussianBlur(frame, (9, 9), 2)
 
-    # Convert to HSV and threshold for red (two ranges due to hue wrap-around)
     hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
     lower_red1 = (0, 100, 80)
     upper_red1 = (10, 255, 255)
@@ -108,28 +107,72 @@ def detect_largest_red_circle(frame):
     mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
     mask = cv2.bitwise_or(mask1, mask2)
 
-    # Clean up mask a bit for more stable circle detection
+    # Stabilize detections
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
     mask = cv2.medianBlur(mask, 5)
 
-    # HoughCircles expects an 8-bit single-channel image; the mask fits
     circles = cv2.HoughCircles(
         mask,
         cv2.HOUGH_GRADIENT,
         dp=1.2,
-        minDist=30,
+        minDist=24,
         param1=100,
-        param2=15,
-        minRadius=5,
+        param2=16,
+        minRadius=4,
         maxRadius=0,
     )
 
+    candidates = []
     if circles is not None and len(circles) > 0:
-        circles = circles[0]
-        # Select the largest circle by radius
-        x, y, r = max(circles, key=lambda c: c[2])
-        return int(x), int(y), int(r)
+        h, w = mask.shape[:2]
+        for (x_f, y_f, r_f) in circles[0]:
+            x = int(x_f); y = int(y_f); r = int(r_f)
+            # Skip degenerate
+            if r <= 0:
+                continue
 
-    return None
+            # ROI around the circle
+            x0 = max(0, x - r)
+            y0 = max(0, y - r)
+            x1 = min(w, x + r)
+            y1 = min(h, y + r)
+            if x1 <= x0 or y1 <= y0:
+                continue
+
+            sub = mask[y0:y1, x0:x1]
+
+            # Find the largest contour in this ROI
+            cnts, _ = cv2.findContours(sub, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not cnts:
+                continue
+            cnt = max(cnts, key=cv2.contourArea)
+            area = float(cv2.contourArea(cnt))
+            perim = float(cv2.arcLength(cnt, True))
+            if perim <= 0.0 or area <= 0.0:
+                continue
+
+            circularity = 4.0 * math.pi * area / (perim * perim)
+
+            # Compute fill ratio: area of red within the ideal circle area
+            # Create a circular mask within ROI
+            circle_mask = sub.copy()
+            circle_mask[:] = 0
+            cv2.circle(circle_mask, (x - x0, y - y0), r, color=255, thickness=-1)
+            filled = cv2.bitwise_and(sub, circle_mask)
+            red_area_inside_circle = float(cv2.countNonZero(filled))
+            circle_area = math.pi * (r ** 2)
+            fill_ratio = red_area_inside_circle / circle_area if circle_area > 0 else 0.0
+
+            # Thresholds: tune if needed
+            if circularity >= 0.87 and 0.75 <= fill_ratio <= 1.25:
+                candidates.append((x, y, r))
+
+        # Sort by radius and keep up to max_count
+        candidates.sort(key=lambda c: c[2], reverse=True)
+        candidates = candidates[:max_count]
+
+    return candidates
 
 
 def run_camera(stop_event: threading.Event):
@@ -151,7 +194,7 @@ def run_camera(stop_event: threading.Event):
                 print("Warning: Failed to read frame from camera")
                 break
 
-            circle = detect_largest_red_circle(frame)
+            circles = detect_red_circles(frame, max_count=2)
             display = frame.copy()
 
             # Compute targets' centers in pixels (relative to current frame size)
@@ -163,23 +206,22 @@ def run_camera(stop_event: threading.Event):
             t2_y = int(TARGET2_REL_Y * h)
             t2_r = TARGET2_DIAMETER // 2
 
-            # Draw target circles (red outline)
-            cv2.circle(display, (t1_x, t1_y), t1_r, (0, 0, 255), 2)
-            cv2.circle(display, (t2_x, t2_y), t2_r, (0, 0, 255), 2)
+            # Draw target circles (blue outline to avoid red overlay confusion)
+            cv2.circle(display, (t1_x, t1_y), t1_r, (255, 0, 0), 2)
+            cv2.circle(display, (t2_x, t2_y), t2_r, (255, 0, 0), 2)
 
-            if circle is not None:
-                x, y, r = circle
-                cv2.circle(display, (x, y), r, (255, 0, 0), 2)
-                cv2.circle(display, (x, y), 3, (255, 0, 0), -1)
-
-                text = f"center: ({x}, {y})"
+            # Draw all detected red circles (in green) and annotate centers
+            for idx, (x, y, r) in enumerate(circles):
+                cv2.circle(display, (x, y), r, (0, 255, 0), 2)
+                cv2.circle(display, (x, y), 3, (0, 255, 0), -1)
+                text = f"center {idx+1}: ({x}, {y})"
                 cv2.putText(
                     display,
                     text,
                     (x + 10, max(20, y - 10)),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.6,
-                    (255, 0, 0),
+                    (0, 255, 0),
                     2,
                     cv2.LINE_AA,
                 )
@@ -187,14 +229,15 @@ def run_camera(stop_event: threading.Event):
             # Determine if the red circle center is inside each target
             hit1 = False
             hit2 = False
-            if circle is not None:
-                x, y, _ = circle
-                dx1 = x - t1_x
-                dy1 = y - t1_y
-                hit1 = (dx1 * dx1 + dy1 * dy1) <= (t1_r * t1_r)
-                dx2 = x - t2_x
-                dy2 = y - t2_y
-                hit2 = (dx2 * dx2 + dy2 * dy2) <= (t2_r * t2_r)
+            for (x, y, _) in circles:
+                if not hit1:
+                    dx1 = x - t1_x
+                    dy1 = y - t1_y
+                    hit1 = (dx1 * dx1 + dy1 * dy1) <= (t1_r * t1_r)
+                if not hit2:
+                    dx2 = x - t2_x
+                    dy2 = y - t2_y
+                    hit2 = (dx2 * dx2 + dy2 * dy2) <= (t2_r * t2_r)
 
             # Draw target status texts in fixed HUD positions
             hud1_text = f"Target 1( cx={t1_x}, cy={t1_y} )"
