@@ -5,12 +5,12 @@
   "target1": {
     "x": 285,
     "y": 228,
-    "diameter": 23
+    "diameter": 30
   },
   "target2": {
     "x": 230,
     "y": 250,
-    "diameter": 16
+    "diameter": 33
   },
   "deadband_px": 1
 }
