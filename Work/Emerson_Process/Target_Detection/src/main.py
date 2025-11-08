@@ -10,6 +10,9 @@ CAMERA_INDEX = 1
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 
+# Rendering / smoothing
+DEADBAND_PX = 6  # Only update drawn center if movement exceeds this many pixels
+
 # Targets (relative to frame size)
 # Centers defined as fractions so they move with the frame
 TARGET1_REL_X = 0.33
@@ -34,6 +37,7 @@ def _settings_path():
 def load_settings():
     global CAMERA_INDEX, TARGET1_REL_X, TARGET1_REL_Y, TARGET1_DIAMETER
     global TARGET2_REL_X, TARGET2_REL_Y, TARGET2_DIAMETER
+    global DEADBAND_PX
 
     path = _settings_path()
     if not os.path.exists(path):
@@ -65,6 +69,9 @@ def load_settings():
         TARGET2_DIAMETER = int(t2.get("diameter", TARGET2_DIAMETER))
         TARGET2_REL_X = max(0.0, min(1.0, t2x / fw))
         TARGET2_REL_Y = max(0.0, min(1.0, t2y / fh))
+
+        # Optional rendering settings
+        DEADBAND_PX = int(data.get("deadband_px", DEADBAND_PX))
     except Exception as e:
         print(f"Warning: Invalid settings content, using defaults: {e}")
 
@@ -82,6 +89,7 @@ def save_settings():
         "frame_height": FRAME_HEIGHT,
         "target1": {"x": t1x, "y": t1y, "diameter": int(TARGET1_DIAMETER)},
         "target2": {"x": t2x, "y": t2y, "diameter": int(TARGET2_DIAMETER)},
+        "deadband_px": int(DEADBAND_PX),
     }
 
     path = _settings_path()
@@ -168,9 +176,61 @@ def detect_red_circles(frame, max_count: int = 2):
             if circularity >= 0.87 and 0.75 <= fill_ratio <= 1.25:
                 candidates.append((x, y, r))
 
-        # Sort by radius and keep up to max_count
-        candidates.sort(key=lambda c: c[2], reverse=True)
-        candidates = candidates[:max_count]
+    # If we still have fewer than desired circles, upsample mask and try again
+    if len(candidates) < max_count:
+        mask_up = cv2.resize(mask, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_LINEAR)
+        circles2 = cv2.HoughCircles(
+            mask_up,
+            cv2.HOUGH_GRADIENT,
+            dp=1.2,
+            minDist=48,     # scaled with 2x
+            param1=100,
+            param2=16,
+            minRadius=8,    # scaled with 2x
+            maxRadius=0,
+        )
+        if circles2 is not None and len(circles2) > 0:
+            h, w = mask.shape[:2]
+            for (x2, y2, r2) in circles2[0]:
+                x = int(round(x2 / 2.0)); y = int(round(y2 / 2.0)); r = int(round(r2 / 2.0))
+                if r <= 0:
+                    continue
+                # Validate at original scale using the same criteria
+                x0 = max(0, x - r)
+                y0 = max(0, y - r)
+                x1 = min(w, x + r)
+                y1 = min(h, y + r)
+                if x1 <= x0 or y1 <= y0:
+                    continue
+                sub = mask[y0:y1, x0:x1]
+                cnts, _ = cv2.findContours(sub, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                if not cnts:
+                    continue
+                cnt = max(cnts, key=cv2.contourArea)
+                area = float(cv2.contourArea(cnt))
+                perim = float(cv2.arcLength(cnt, True))
+                if perim <= 0.0 or area <= 0.0:
+                    continue
+                circularity = 4.0 * math.pi * area / (perim * perim)
+                circle_mask = sub.copy(); circle_mask[:] = 0
+                cv2.circle(circle_mask, (x - x0, y - y0), r, color=255, thickness=-1)
+                filled = cv2.bitwise_and(sub, circle_mask)
+                red_area_inside_circle = float(cv2.countNonZero(filled))
+                circle_area = math.pi * (r ** 2)
+                fill_ratio = red_area_inside_circle / circle_area if circle_area > 0 else 0.0
+                if circularity >= 0.87 and 0.75 <= fill_ratio <= 1.25:
+                    # Deduplicate by center proximity (<=5 px)
+                    dup = False
+                    for (ex, ey, er) in candidates:
+                        if (ex - x) * (ex - x) + (ey - y) * (ey - y) <= 25:
+                            dup = True
+                            break
+                    if not dup:
+                        candidates.append((x, y, r))
+
+    # Sort by radius and keep up to max_count
+    candidates.sort(key=lambda c: c[2], reverse=True)
+    candidates = candidates[:max_count]
 
     return candidates
 
@@ -188,6 +248,9 @@ def run_camera(stop_event: threading.Event):
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
     try:
+        prev_displayed = []  # Previously drawn circle centers [(x,y,r), ...]
+        last_hit1 = False
+        last_hit2 = False
         while not stop_event.is_set():
             ret, frame = cap.read()
             if not ret:
@@ -206,38 +269,74 @@ def run_camera(stop_event: threading.Event):
             t2_y = int(TARGET2_REL_Y * h)
             t2_r = TARGET2_DIAMETER // 2
 
-            # Draw target circles (blue outline to avoid red overlay confusion)
-            cv2.circle(display, (t1_x, t1_y), t1_r, (255, 0, 0), 2)
-            cv2.circle(display, (t2_x, t2_y), t2_r, (255, 0, 0), 2)
+            # Draw target circles (blue outline) with dynamic thickness
+            t1_th = max(1, int(t1_r // 12))
+            t2_th = max(1, int(t2_r // 12))
+            cv2.circle(display, (t1_x, t1_y), t1_r, (255, 0, 0), t1_th)
+            cv2.circle(display, (t2_x, t2_y), t2_r, (255, 0, 0), t2_th)
 
-            # Draw all detected red circles (in green) and annotate centers
-            for idx, (x, y, r) in enumerate(circles):
-                cv2.circle(display, (x, y), r, (0, 255, 0), 2)
-                cv2.circle(display, (x, y), 3, (0, 255, 0), -1)
-                text = f"center {idx+1}: ({x}, {y})"
+            # Build smoothed/displayed circles using deadband on center position only
+            next_displayed = []
+            for i, (x, y, r) in enumerate(circles):
+                if i < len(prev_displayed):
+                    px, py, pr = prev_displayed[i]
+                    if px is not None and py is not None:
+                        dx = x - px
+                        dy = y - py
+                        if (dx * dx + dy * dy) <= (DEADBAND_PX * DEADBAND_PX):
+                            # Keep previous center to reduce flicker; update radius from realtime
+                            next_displayed.append((px, py, r))
+                            continue
+                next_displayed.append((x, y, r))
+
+            # Draw smoothed circles (in green) and annotate centers with dynamic thickness
+            for idx, (dx_, dy_, r_) in enumerate(next_displayed):
+                c_th = max(1, int(r_ // 12))
+                cv2.circle(display, (dx_, dy_), r_, (0, 255, 0), c_th)
+                cv2.circle(display, (dx_, dy_), 3, (0, 255, 0), -1)
+                text = f"center {idx+1}: ({dx_}, {dy_})"
                 cv2.putText(
                     display,
                     text,
-                    (x + 10, max(20, y - 10)),
+                    (dx_ + 10, max(20, dy_ - 10)),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.6,
                     (0, 255, 0),
                     2,
                     cv2.LINE_AA,
                 )
+            prev_displayed = next_displayed
 
             # Determine if the red circle center is inside each target
-            hit1 = False
-            hit2 = False
-            for (x, y, _) in circles:
-                if not hit1:
-                    dx1 = x - t1_x
-                    dy1 = y - t1_y
-                    hit1 = (dx1 * dx1 + dy1 * dy1) <= (t1_r * t1_r)
-                if not hit2:
-                    dx2 = x - t2_x
-                    dy2 = y - t2_y
-                    hit2 = (dx2 * dx2 + dy2 * dy2) <= (t2_r * t2_r)
+            # Debounced hit logic using hysteresis based on DEADBAND_PX
+            # Compute best (max) inside margin for each target across all circles
+            best_margin1 = float('-inf')
+            best_margin2 = float('-inf')
+            for (x, y, _) in circles:  # real-time positions
+                # margin = target_radius - distance_to_center (positive -> inside)
+                d1 = math.hypot(x - t1_x, y - t1_y)
+                d2 = math.hypot(x - t2_x, y - t2_y)
+                best_margin1 = max(best_margin1, t1_r - d1)
+                best_margin2 = max(best_margin2, t2_r - d2)
+
+            # Apply hysteresis: turn ON only when clearly inside by deadband; OFF when clearly outside
+            hit1 = last_hit1
+            if not last_hit1:
+                if best_margin1 >= DEADBAND_PX:
+                    hit1 = True
+            else:
+                if best_margin1 <= -DEADBAND_PX:
+                    hit1 = False
+
+            hit2 = last_hit2
+            if not last_hit2:
+                if best_margin2 >= DEADBAND_PX:
+                    hit2 = True
+            else:
+                if best_margin2 <= -DEADBAND_PX:
+                    hit2 = False
+
+            last_hit1, last_hit2 = hit1, hit2
 
             # Draw target status texts in fixed HUD positions
             hud1_text = f"Target 1( cx={t1_x}, cy={t1_y} )"
@@ -407,6 +506,27 @@ def start_gui(stop_event: threading.Event):
     sld2_x.configure(command=on_x2)
     sld2_y.configure(command=on_y2)
     sld2_d.configure(command=on_d2)
+
+    # Spacer
+    ctk.CTkLabel(frame, text="").pack(pady=(8, 0))
+
+    # Rendering settings
+    lblr_title = ctk.CTkLabel(frame, text="Rendering")
+    lblr_title.pack(anchor="w", pady=(0, 6))
+
+    val_dead = tk.StringVar(value=f"Deadband: {DEADBAND_PX} px")
+    lbl_dead = ctk.CTkLabel(frame, textvariable=val_dead)
+    lbl_dead.pack(anchor="w")
+    sld_dead = ctk.CTkSlider(frame, from_=0, to=30, number_of_steps=30)
+    sld_dead.set(DEADBAND_PX)
+    sld_dead.pack(fill="x", pady=(0, 8))
+
+    def on_dead(val):
+        global DEADBAND_PX
+        DEADBAND_PX = int(float(val))
+        val_dead.set(f"Deadband: {DEADBAND_PX} px")
+
+    sld_dead.configure(command=on_dead)
 
     def on_close():
         stop_event.set()
