@@ -5,6 +5,14 @@ import threading
 import json
 import os
 import math
+try:
+    # PLC helpers (optional). If pylogix is missing, we just skip PLC writes.
+    from utils.pylogix import init_default as plc_init_default, update_default as plc_update_default, shutdown_default as plc_shutdown_default
+    _PLC_AVAILABLE = True
+    _PLC_IMPORT_ERROR = None
+except Exception as _e:
+    _PLC_AVAILABLE = False
+    _PLC_IMPORT_ERROR = _e
 
 CAMERA_INDEX = 1
 FRAME_WIDTH = 640
@@ -348,6 +356,13 @@ def run_camera(stop_event: threading.Event):
 
             last_hit1, last_hit2 = hit1, hit2
 
+            # Send debounced states to PLC (non-blocking writer thread)
+            if _PLC_AVAILABLE:
+                try:
+                    plc_update_default(hit1, hit2)
+                except Exception:
+                    pass
+
             # Draw target status texts in fixed HUD positions
             hud1_text = f"Target 1( cx={t1_x}, cy={t1_y} )"
             hud2_text = f"Target 2( cx={t2_x}, cy={t2_y} )"
@@ -550,6 +565,16 @@ def main():
     # Load persisted settings (if available)
     load_settings()
 
+    # Initialize PLC writer (optional)
+    if _PLC_AVAILABLE:
+        try:
+            plc_init_default()
+        except Exception:
+            pass
+    else:
+        if _PLC_IMPORT_ERROR is not None:
+            print(f"PLC disabled: {_PLC_IMPORT_ERROR}")
+
     # Start camera processing in a background thread
     cam_thread = threading.Thread(
         target=run_camera, args=(_stop_event,), daemon=True)
@@ -561,6 +586,13 @@ def main():
     # Ensure camera thread ends
     _stop_event.set()
     cam_thread.join(timeout=1.0)
+
+    # Shutdown PLC writer
+    if _PLC_AVAILABLE:
+        try:
+            plc_shutdown_default()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

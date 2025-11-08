@@ -7,10 +7,9 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 try:
-    # External library: pip install pylogix
-    from pylogix import PLC  # type: ignore
-except Exception as e:  # pragma: no cover
-    PLC = None  # type: ignore
+    from pylogix import PLC
+except Exception as e:
+    PLC = None
     _import_error = e
 else:
     _import_error = None
@@ -28,7 +27,7 @@ class PLCConfig:
 
 class PLCWriter:
     def __init__(self, config: PLCConfig):
-        if PLC is None:  # pragma: no cover
+        if PLC is None:
             raise ImportError(
                 f"pylogix library is not available: {_import_error}"
             )
@@ -70,11 +69,8 @@ class PLCWriter:
         try:
             if self._comm is None:
                 self._comm = PLC()
-            # Configure connection
-            self._comm.IPAddress = self.config.ip  # type: ignore[attr-defined]
-            self._comm.ProcessorSlot = self.config.slot  # type: ignore[attr-defined]
-            # Lightweight probe: read back the processor name or a non-existent tag
-            # Many versions don't require an explicit connect; next read/write will open
+            self._comm.IPAddress = self.config.ip
+            self._comm.ProcessorSlot = self.config.slot
             return True
         except Exception:
             self._disconnect()
@@ -99,7 +95,7 @@ class PLCWriter:
         try:
             if not self._ensure_connected():
                 return False
-            res = self._comm.Write(tag, bool(value))  # type: ignore[union-attr]
+            res = self._comm.Write(tag, bool(value))
             if isinstance(res, list):
                 ok = all(getattr(r, "Status", "") == "Success" for r in res)
             else:
@@ -108,7 +104,6 @@ class PLCWriter:
                 return False
             return True
         except Exception:
-            # On any exception, drop connection and signal failure
             self._disconnect()
             return False
 
@@ -174,7 +169,8 @@ def init_default(config: Optional[PLCConfig] = None) -> PLCWriter:
 def update_default(target1_hit: bool, target2_hit: bool) -> None:
     if _default_writer is None:
         init_default()
-    _default_writer.update_targets(target1_hit, target2_hit)  # type: ignore[union-attr]
+    _default_writer.update_targets(
+        target1_hit, target2_hit)  # type: ignore[union-attr]
 
 
 def shutdown_default() -> None:
@@ -182,4 +178,3 @@ def shutdown_default() -> None:
     if _default_writer is not None:
         _default_writer.stop()
         _default_writer = None
-
