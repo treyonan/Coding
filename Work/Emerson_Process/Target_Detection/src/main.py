@@ -17,9 +17,21 @@ except Exception as _e:
 CAMERA_INDEX = 1
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
+CURRENT_FRAME_WIDTH = FRAME_WIDTH
+CURRENT_FRAME_HEIGHT = FRAME_HEIGHT
 
 # Rendering / smoothing
-DEADBAND_PX = 6  # Only update drawn center if movement exceeds this many pixels
+DEFAULT_DEADBAND_PX = 6
+DEADBAND_PX = DEFAULT_DEADBAND_PX  # Only update drawn center if movement exceeds this many pixels
+
+# Detection parameters (tunable)
+DEFAULT_HOUGH_PARAM2 = 16  # Lower = more detections (more false positives)
+DEFAULT_MIN_RADIUS = 4     # Minimum circle radius in pixels
+HOUGH_PARAM2 = DEFAULT_HOUGH_PARAM2
+MIN_RADIUS = DEFAULT_MIN_RADIUS
+
+# Debug view
+SHOW_MASK = False
 
 # Targets (relative to frame size)
 # Centers defined as fractions so they move with the frame
@@ -45,7 +57,7 @@ def _settings_path():
 def load_settings():
     global CAMERA_INDEX, TARGET1_REL_X, TARGET1_REL_Y, TARGET1_DIAMETER
     global TARGET2_REL_X, TARGET2_REL_Y, TARGET2_DIAMETER
-    global DEADBAND_PX
+    global DEADBAND_PX, HOUGH_PARAM2, MIN_RADIUS, SHOW_MASK
 
     path = _settings_path()
     if not os.path.exists(path):
@@ -78,8 +90,11 @@ def load_settings():
         TARGET2_REL_X = max(0.0, min(1.0, t2x / fw))
         TARGET2_REL_Y = max(0.0, min(1.0, t2y / fh))
 
-        # Optional rendering settings
+        # Optional rendering / detection settings
         DEADBAND_PX = int(data.get("deadband_px", DEADBAND_PX))
+        HOUGH_PARAM2 = int(data.get("hough_param2", HOUGH_PARAM2))
+        MIN_RADIUS = int(data.get("min_radius", MIN_RADIUS))
+        SHOW_MASK = bool(data.get("show_mask", SHOW_MASK))
     except Exception as e:
         print(f"Warning: Invalid settings content, using defaults: {e}")
 
@@ -98,6 +113,9 @@ def save_settings():
         "target1": {"x": t1x, "y": t1y, "diameter": int(TARGET1_DIAMETER)},
         "target2": {"x": t2x, "y": t2y, "diameter": int(TARGET2_DIAMETER)},
         "deadband_px": int(DEADBAND_PX),
+        "hough_param2": int(HOUGH_PARAM2),
+        "min_radius": int(MIN_RADIUS),
+        "show_mask": bool(SHOW_MASK),
     }
 
     path = _settings_path()
@@ -108,12 +126,9 @@ def save_settings():
         print(f"Warning: Failed to save settings: {e}")
 
 
-def detect_red_circles(frame, max_count: int = 2):
-    """Return up to `max_count` red circles as a list of (x, y, r).
-    HSV thresholding for red + morphology + HoughCircles.
-    """
+def create_red_mask(frame):
+    """Create a binary mask for red regions with blur + HSV threshold + morphology."""
     blurred = cv2.GaussianBlur(frame, (9, 9), 2)
-
     hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
     lower_red1 = (0, 100, 80)
     upper_red1 = (10, 255, 255)
@@ -122,20 +137,26 @@ def detect_red_circles(frame, max_count: int = 2):
     mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
     mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
     mask = cv2.bitwise_or(mask1, mask2)
-
-    # Stabilize detections
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
     mask = cv2.medianBlur(mask, 5)
+    return mask
 
+
+def detect_red_circles(frame, max_count: int = 2, mask=None):
+    """Return up to `max_count` red circles as a list of (x, y, r)."""
+    if mask is None:
+        mask = create_red_mask(frame)
+
+    min_dist = max(12, 6 * max(1, MIN_RADIUS))
     circles = cv2.HoughCircles(
         mask,
         cv2.HOUGH_GRADIENT,
         dp=1.2,
-        minDist=24,
+        minDist=int(min_dist),
         param1=100,
-        param2=16,
-        minRadius=4,
+        param2=int(HOUGH_PARAM2),
+        minRadius=int(MIN_RADIUS),
         maxRadius=0,
     )
 
@@ -196,10 +217,10 @@ def detect_red_circles(frame, max_count: int = 2):
             mask_up,
             cv2.HOUGH_GRADIENT,
             dp=1.2,
-            minDist=48,     # scaled with 2x
+            minDist=int(min_dist * 2),     # scaled with 2x
             param1=100,
-            param2=16,
-            minRadius=8,    # scaled with 2x
+            param2=int(HOUGH_PARAM2),
+            minRadius=int(max(2, MIN_RADIUS) * 2),    # scaled with 2x
             maxRadius=0,
         )
         if circles2 is not None and len(circles2) > 0:
@@ -261,6 +282,16 @@ def run_camera(stop_event: threading.Event):
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+    # Record actual frame size
+    try:
+        w_actual = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h_actual = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if w_actual > 0 and h_actual > 0:
+            global CURRENT_FRAME_WIDTH, CURRENT_FRAME_HEIGHT
+            CURRENT_FRAME_WIDTH = w_actual
+            CURRENT_FRAME_HEIGHT = h_actual
+    except Exception:
+        pass
 
     window_name = "Target Detection"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -269,13 +300,33 @@ def run_camera(stop_event: threading.Event):
         prev_displayed = []  # Previously drawn circle centers [(x,y,r), ...]
         last_hit1 = False
         last_hit2 = False
+        mask_window_open = False
+        # last applied size to the capture
+        last_w_applied = CURRENT_FRAME_WIDTH
+        last_h_applied = CURRENT_FRAME_HEIGHT
         while not stop_event.is_set():
+            # Apply resolution change on-the-fly if desired differs from actual
+            try:
+                if FRAME_WIDTH != last_w_applied or FRAME_HEIGHT != last_h_applied:
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+                    # Read back
+                    w_actual = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    h_actual = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    if w_actual > 0 and h_actual > 0:
+                        CURRENT_FRAME_WIDTH = w_actual
+                        CURRENT_FRAME_HEIGHT = h_actual
+                        last_w_applied = w_actual
+                        last_h_applied = h_actual
+            except Exception:
+                pass
             ret, frame = cap.read()
             if not ret:
                 print("Warning: Failed to read frame from camera")
                 break
 
-            circles = detect_red_circles(frame, max_count=2)
+            mask = create_red_mask(frame)
+            circles = detect_red_circles(frame, max_count=2, mask=mask)
             display = frame.copy()
 
             # Compute targets' centers in pixels (relative to current frame size)
@@ -293,18 +344,57 @@ def run_camera(stop_event: threading.Event):
             cv2.circle(display, (t1_x, t1_y), t1_r, (255, 0, 0), t1_th)
             cv2.circle(display, (t2_x, t2_y), t2_r, (255, 0, 0), t2_th)
 
+            # Nearest-neighbor matching to keep IDs stable across frames
+            # Order current circles to align with prev_displayed by proximity
+            ordered_current = []
+            remaining_curr = circles.copy()
+            used_idx = set()
+            if prev_displayed and remaining_curr:
+                # Build pairwise distances
+                pairs = []  # (dist2, prev_idx, curr_idx)
+                for pi, (px, py, pr) in enumerate(prev_displayed):
+                    for ci, (cx, cy, cr) in enumerate(remaining_curr):
+                        d2 = (cx - px) * (cx - px) + (cy - py) * (cy - py)
+                        pairs.append((d2, pi, ci))
+                pairs.sort(key=lambda t: t[0])
+                assigned_prev = set()
+                assigned_curr = set()
+                mapping = {}
+                for d2, pi, ci in pairs:
+                    if pi in assigned_prev or ci in assigned_curr:
+                        continue
+                    assigned_prev.add(pi)
+                    assigned_curr.add(ci)
+                    mapping[pi] = ci
+                # Build ordered list by prev indices
+                for pi in range(len(prev_displayed)):
+                    ci = mapping.get(pi)
+                    if ci is not None:
+                        ordered_current.append(remaining_curr[ci])
+                        used_idx.add(ci)
+                    else:
+                        ordered_current.append(None)
+                # Append any new unmatched detections at the end
+                for ci, c in enumerate(remaining_curr):
+                    if ci not in used_idx:
+                        ordered_current.append(c)
+            else:
+                ordered_current = remaining_curr
+
             # Build smoothed/displayed circles using deadband on center position only
             next_displayed = []
-            for i, (x, y, r) in enumerate(circles):
+            for i, cur in enumerate(ordered_current):
+                if cur is None:
+                    continue
+                x, y, r = cur
                 if i < len(prev_displayed):
                     px, py, pr = prev_displayed[i]
-                    if px is not None and py is not None:
-                        dx = x - px
-                        dy = y - py
-                        if (dx * dx + dy * dy) <= (DEADBAND_PX * DEADBAND_PX):
-                            # Keep previous center to reduce flicker; update radius from realtime
-                            next_displayed.append((px, py, r))
-                            continue
+                    dx = x - px
+                    dy = y - py
+                    if (dx * dx + dy * dy) <= (DEADBAND_PX * DEADBAND_PX):
+                        # Keep previous center to reduce visual jitter; update radius
+                        next_displayed.append((px, py, r))
+                        continue
                 next_displayed.append((x, y, r))
 
             # Draw smoothed circles (in green) and annotate centers with dynamic thickness
@@ -374,6 +464,17 @@ def run_camera(stop_event: threading.Event):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, hud2_color, 2, cv2.LINE_AA)
 
             cv2.imshow(window_name, display)
+            # Optional mask window
+            if SHOW_MASK:
+                cv2.imshow("Red Mask", mask)
+                mask_window_open = True
+            else:
+                if mask_window_open:
+                    try:
+                        cv2.destroyWindow("Red Mask")
+                    except Exception:
+                        pass
+                    mask_window_open = False
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
@@ -418,8 +519,8 @@ def start_gui(stop_event: threading.Event):
     frame.pack(fill="both", expand=True, padx=12, pady=12)
 
     # Initial slider values in pixels for Target 1
-    init1_x_px = int(TARGET1_REL_X * FRAME_WIDTH)
-    init1_y_px = int(TARGET1_REL_Y * FRAME_HEIGHT)
+    init1_x_px = int(TARGET1_REL_X * CURRENT_FRAME_WIDTH)
+    init1_y_px = int(TARGET1_REL_Y * CURRENT_FRAME_HEIGHT)
     init1_d_px = int(TARGET1_DIAMETER)
 
     # Target 1 Controls
@@ -432,35 +533,35 @@ def start_gui(stop_event: threading.Event):
 
     lbl1_x = ctk.CTkLabel(frame, textvariable=val1_x)
     lbl1_x.pack(anchor="w")
-    sld1_x = ctk.CTkSlider(frame, from_=0, to=FRAME_WIDTH,
-                           number_of_steps=FRAME_WIDTH)
+    sld1_x = ctk.CTkSlider(frame, from_=0, to=CURRENT_FRAME_WIDTH,
+                          number_of_steps=CURRENT_FRAME_WIDTH)
     sld1_x.set(init1_x_px)
     sld1_x.pack(fill="x", pady=(0, 8))
 
     lbl1_y = ctk.CTkLabel(frame, textvariable=val1_y)
     lbl1_y.pack(anchor="w")
-    sld1_y = ctk.CTkSlider(frame, from_=0, to=FRAME_HEIGHT,
-                           number_of_steps=FRAME_HEIGHT)
+    sld1_y = ctk.CTkSlider(frame, from_=0, to=CURRENT_FRAME_HEIGHT,
+                          number_of_steps=CURRENT_FRAME_HEIGHT)
     sld1_y.set(init1_y_px)
     sld1_y.pack(fill="x", pady=(0, 8))
 
     lbl1_d = ctk.CTkLabel(frame, textvariable=val1_d)
     lbl1_d.pack(anchor="w")
     sld1_d = ctk.CTkSlider(frame, from_=5, to=min(
-        FRAME_WIDTH, FRAME_HEIGHT), number_of_steps=min(FRAME_WIDTH, FRAME_HEIGHT))
+        CURRENT_FRAME_WIDTH, CURRENT_FRAME_HEIGHT), number_of_steps=min(CURRENT_FRAME_WIDTH, CURRENT_FRAME_HEIGHT))
     sld1_d.set(init1_d_px)
     sld1_d.pack(fill="x", pady=(0, 8))
 
     def on_x1(val):
         global TARGET1_REL_X
         x_px = int(float(val))
-        TARGET1_REL_X = max(0.0, min(1.0, x_px / FRAME_WIDTH))
+        TARGET1_REL_X = max(0.0, min(1.0, x_px / max(1, CURRENT_FRAME_WIDTH)))
         val1_x.set(f"X: {x_px}")
 
     def on_y1(val):
         global TARGET1_REL_Y
         y_px = int(float(val))
-        TARGET1_REL_Y = max(0.0, min(1.0, y_px / FRAME_HEIGHT))
+        TARGET1_REL_Y = max(0.0, min(1.0, y_px / max(1, CURRENT_FRAME_HEIGHT)))
         val1_y.set(f"Y: {y_px}")
 
     def on_d1(val):
@@ -477,8 +578,8 @@ def start_gui(stop_event: threading.Event):
     ctk.CTkLabel(frame, text="").pack(pady=(8, 0))
 
     # Initial slider values in pixels for Target 2
-    init2_x_px = int(TARGET2_REL_X * FRAME_WIDTH)
-    init2_y_px = int(TARGET2_REL_Y * FRAME_HEIGHT)
+    init2_x_px = int(TARGET2_REL_X * CURRENT_FRAME_WIDTH)
+    init2_y_px = int(TARGET2_REL_Y * CURRENT_FRAME_HEIGHT)
     init2_d_px = int(TARGET2_DIAMETER)
 
     # Target 2 Controls
@@ -491,35 +592,35 @@ def start_gui(stop_event: threading.Event):
 
     lbl2_x = ctk.CTkLabel(frame, textvariable=val2_x)
     lbl2_x.pack(anchor="w")
-    sld2_x = ctk.CTkSlider(frame, from_=0, to=FRAME_WIDTH,
-                           number_of_steps=FRAME_WIDTH)
+    sld2_x = ctk.CTkSlider(frame, from_=0, to=CURRENT_FRAME_WIDTH,
+                           number_of_steps=CURRENT_FRAME_WIDTH)
     sld2_x.set(init2_x_px)
     sld2_x.pack(fill="x", pady=(0, 8))
 
     lbl2_y = ctk.CTkLabel(frame, textvariable=val2_y)
     lbl2_y.pack(anchor="w")
-    sld2_y = ctk.CTkSlider(frame, from_=0, to=FRAME_HEIGHT,
-                           number_of_steps=FRAME_HEIGHT)
+    sld2_y = ctk.CTkSlider(frame, from_=0, to=CURRENT_FRAME_HEIGHT,
+                           number_of_steps=CURRENT_FRAME_HEIGHT)
     sld2_y.set(init2_y_px)
     sld2_y.pack(fill="x", pady=(0, 8))
 
     lbl2_d = ctk.CTkLabel(frame, textvariable=val2_d)
     lbl2_d.pack(anchor="w")
     sld2_d = ctk.CTkSlider(frame, from_=5, to=min(
-        FRAME_WIDTH, FRAME_HEIGHT), number_of_steps=min(FRAME_WIDTH, FRAME_HEIGHT))
+        CURRENT_FRAME_WIDTH, CURRENT_FRAME_HEIGHT), number_of_steps=min(CURRENT_FRAME_WIDTH, CURRENT_FRAME_HEIGHT))
     sld2_d.set(init2_d_px)
     sld2_d.pack(fill="x", pady=(0, 8))
 
     def on_x2(val):
         global TARGET2_REL_X
         x_px = int(float(val))
-        TARGET2_REL_X = max(0.0, min(1.0, x_px / FRAME_WIDTH))
+        TARGET2_REL_X = max(0.0, min(1.0, x_px / max(1, CURRENT_FRAME_WIDTH)))
         val2_x.set(f"X: {x_px}")
 
     def on_y2(val):
         global TARGET2_REL_Y
         y_px = int(float(val))
-        TARGET2_REL_Y = max(0.0, min(1.0, y_px / FRAME_HEIGHT))
+        TARGET2_REL_Y = max(0.0, min(1.0, y_px / max(1, CURRENT_FRAME_HEIGHT)))
         val2_y.set(f"Y: {y_px}")
 
     def on_d2(val):
@@ -552,6 +653,126 @@ def start_gui(stop_event: threading.Event):
         val_dead.set(f"Deadband: {DEADBAND_PX} px")
 
     sld_dead.configure(command=on_dead)
+
+    # Mask toggle
+    mask_var = tk.BooleanVar(value=SHOW_MASK)
+    chk_mask = ctk.CTkCheckBox(frame, text="Show red mask", variable=mask_var)
+    chk_mask.pack(anchor="w", pady=(4, 8))
+
+    def on_mask_toggle():
+        global SHOW_MASK
+        SHOW_MASK = bool(mask_var.get())
+
+    chk_mask.configure(command=on_mask_toggle)
+
+    # Reset to defaults button (visual + detection)
+    def on_reset_defaults():
+        global DEADBAND_PX, HOUGH_PARAM2, MIN_RADIUS, SHOW_MASK
+        DEADBAND_PX = DEFAULT_DEADBAND_PX
+        HOUGH_PARAM2 = DEFAULT_HOUGH_PARAM2
+        MIN_RADIUS = DEFAULT_MIN_RADIUS
+        SHOW_MASK = False
+        # Update GUI controls
+        sld_dead.set(DEADBAND_PX); val_dead.set(f"Deadband: {DEADBAND_PX} px")
+        sld_param2.set(HOUGH_PARAM2); val_param2.set(f"Hough param2: {HOUGH_PARAM2}")
+        sld_minr.set(MIN_RADIUS); val_minr.set(f"Min radius: {MIN_RADIUS} px")
+        mask_var.set(False)
+        try:
+            save_settings()
+        except Exception:
+            pass
+
+    btn_reset = ctk.CTkButton(frame, text="Reset to Defaults", command=on_reset_defaults)
+    btn_reset.pack(anchor="w", pady=(0, 8))
+
+    # Detection tuning
+    lbld_title = ctk.CTkLabel(frame, text="Detection Tuning")
+    lbld_title.pack(anchor="w", pady=(8, 6))
+
+    val_param2 = tk.StringVar(value=f"Hough param2: {HOUGH_PARAM2}")
+    lbl_param2 = ctk.CTkLabel(frame, textvariable=val_param2)
+    lbl_param2.pack(anchor="w")
+    sld_param2 = ctk.CTkSlider(frame, from_=8, to=40, number_of_steps=32)
+    sld_param2.set(HOUGH_PARAM2)
+    sld_param2.pack(fill="x", pady=(0, 8))
+
+    val_minr = tk.StringVar(value=f"Min radius: {MIN_RADIUS} px")
+    lbl_minr = ctk.CTkLabel(frame, textvariable=val_minr)
+    lbl_minr.pack(anchor="w")
+    sld_minr = ctk.CTkSlider(frame, from_=2, to=30, number_of_steps=28)
+    sld_minr.set(MIN_RADIUS)
+    sld_minr.pack(fill="x", pady=(0, 8))
+
+    def on_param2(val):
+        global HOUGH_PARAM2
+        HOUGH_PARAM2 = int(float(val))
+        val_param2.set(f"Hough param2: {HOUGH_PARAM2}")
+
+    def on_minr(val):
+        global MIN_RADIUS
+        MIN_RADIUS = int(float(val))
+        val_minr.set(f"Min radius: {MIN_RADIUS} px")
+
+    sld_param2.configure(command=on_param2)
+    sld_minr.configure(command=on_minr)
+
+    # Camera resolution selection
+    lbl_cam = ctk.CTkLabel(frame, text="Camera")
+    lbl_cam.pack(anchor="w", pady=(8, 6))
+    res_options = ["640x480", "1280x720", "1920x1080"]
+    cur_res = f"{FRAME_WIDTH}x{FRAME_HEIGHT}"
+    if cur_res not in res_options:
+        res_options.insert(0, cur_res)
+    res_var = tk.StringVar(value=cur_res)
+
+    def on_res_change(choice: str):
+        try:
+            w_s, h_s = choice.split("x")
+            w_n = int(w_s); h_n = int(h_s)
+        except Exception:
+            return
+        global FRAME_WIDTH, FRAME_HEIGHT
+        FRAME_WIDTH = w_n
+        FRAME_HEIGHT = h_n
+        # Persist desired resolution; camera thread will apply dynamically
+        try:
+            save_settings()
+        except Exception:
+            pass
+
+    opt_res = ctk.CTkOptionMenu(frame, values=res_options, variable=res_var, command=on_res_change)
+    opt_res.pack(anchor="w")
+
+    # Dynamically sync slider ranges with actual camera resolution
+    last_w = CURRENT_FRAME_WIDTH
+    last_h = CURRENT_FRAME_HEIGHT
+
+    def _sync_ranges():
+        nonlocal last_w, last_h
+        w = CURRENT_FRAME_WIDTH
+        h = CURRENT_FRAME_HEIGHT
+        if w != last_w or h != last_h:
+            sld1_x.configure(to=w, number_of_steps=max(1, w))
+            sld1_y.configure(to=h, number_of_steps=max(1, h))
+            sld1_d.configure(to=min(w, h), number_of_steps=max(1, min(w, h)))
+            sld2_x.configure(to=w, number_of_steps=max(1, w))
+            sld2_y.configure(to=h, number_of_steps=max(1, h))
+            sld2_d.configure(to=min(w, h), number_of_steps=max(1, min(w, h)))
+
+            x1 = int(TARGET1_REL_X * w)
+            y1 = int(TARGET1_REL_Y * h)
+            x2 = int(TARGET2_REL_X * w)
+            y2 = int(TARGET2_REL_Y * h)
+            sld1_x.set(x1); val1_x.set(f"X: {x1}")
+            sld1_y.set(y1); val1_y.set(f"Y: {y1}")
+            sld2_x.set(x2); val2_x.set(f"X: {x2}")
+            sld2_y.set(y2); val2_y.set(f"Y: {y2}")
+
+            last_w, last_h = w, h
+
+        root.after(250, _sync_ranges)
+
+    root.after(300, _sync_ranges)
 
     def on_close():
         stop_event.set()

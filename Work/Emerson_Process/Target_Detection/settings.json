@@ -1,16 +1,19 @@
 {
   "camera_index": 1,
-  "frame_width": 640,
-  "frame_height": 480,
+  "frame_width": 1280,
+  "frame_height": 720,
   "target1": {
-    "x": 285,
-    "y": 228,
-    "diameter": 30
+    "x": 692,
+    "y": 331,
+    "diameter": 14
   },
   "target2": {
-    "x": 230,
-    "y": 250,
-    "diameter": 33
+    "x": 692,
+    "y": 447,
+    "diameter": 16
   },
-  "deadband_px": 1
+  "deadband_px": 1,
+  "hough_param2": 11,
+  "min_radius": 4,
+  "show_mask": true
 }
