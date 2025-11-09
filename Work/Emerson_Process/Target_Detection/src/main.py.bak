@@ -42,10 +42,6 @@ OFF_FRAMES = DEFAULT_OFF_FRAMES
 APPEAR_FRAMES = DEFAULT_APPEAR_FRAMES
 HOLD_FRAMES = DEFAULT_HOLD_FRAMES
 
-# Unified stability control
-DEFAULT_STABILITY_FRAMES = 3
-STABILITY_FRAMES = DEFAULT_STABILITY_FRAMES
-
 # Debug view
 SHOW_MASK = False
 
@@ -75,7 +71,6 @@ def load_settings():
     global TARGET2_REL_X, TARGET2_REL_Y, TARGET2_DIAMETER
     global DEADBAND_PX, HOUGH_PARAM2, MIN_RADIUS, SHOW_MASK
     global ON_FRAMES, OFF_FRAMES, APPEAR_FRAMES, HOLD_FRAMES
-    global STABILITY_FRAMES
 
     path = _settings_path()
     if not os.path.exists(path):
@@ -113,19 +108,10 @@ def load_settings():
         HOUGH_PARAM2 = int(data.get("hough_param2", HOUGH_PARAM2))
         MIN_RADIUS = int(data.get("min_radius", MIN_RADIUS))
         SHOW_MASK = bool(data.get("show_mask", SHOW_MASK))
-        # Prefer unified stability control if present
-        STABILITY_FRAMES = int(data.get("stability_frames", STABILITY_FRAMES))
-        # Legacy keys fallback
         ON_FRAMES = int(data.get("on_frames", ON_FRAMES))
         OFF_FRAMES = int(data.get("off_frames", OFF_FRAMES))
         APPEAR_FRAMES = int(data.get("appear_frames", APPEAR_FRAMES))
         HOLD_FRAMES = int(data.get("hold_frames", HOLD_FRAMES))
-        # Derive from unified stability (overrides legacy)
-        if STABILITY_FRAMES is not None:
-            ON_FRAMES = STABILITY_FRAMES
-            OFF_FRAMES = STABILITY_FRAMES
-            APPEAR_FRAMES = max(1, STABILITY_FRAMES - 1)
-            HOLD_FRAMES = max(1, STABILITY_FRAMES * 2)
     except Exception as e:
         print(f"Warning: Invalid settings content, using defaults: {e}")
 
@@ -151,7 +137,6 @@ def save_settings():
         "off_frames": int(OFF_FRAMES),
         "appear_frames": int(APPEAR_FRAMES),
         "hold_frames": int(HOLD_FRAMES),
-        "stability_frames": int(STABILITY_FRAMES),
     }
 
     path = _settings_path()
@@ -334,14 +319,8 @@ def run_camera(stop_event: threading.Event):
 
     try:
         prev_displayed = []  # Previously drawn circle centers [(x,y,r), ...]
-        last_hit1 = False  # hysteresis state
+        last_hit1 = False
         last_hit2 = False
-        disp_hit1 = False  # displayed/PLC state after temporal filtering
-        disp_hit2 = False
-        on_count1 = off_count1 = 0
-        on_count2 = off_count2 = 0
-        appear_counts = [0, 0]
-        hold_counts = [0, 0]
         mask_window_open = False
         # last applied size to the capture
         last_w_applied = CURRENT_FRAME_WIDTH
@@ -349,7 +328,6 @@ def run_camera(stop_event: threading.Event):
         # fps tracking
         last_ts = time.time()
         while not stop_event.is_set():
-            # initialize per-loop states if missing
             # Apply resolution change on-the-fly if desired differs from actual
             try:
                 if FRAME_WIDTH != last_w_applied or FRAME_HEIGHT != last_h_applied:
@@ -441,39 +419,21 @@ def run_camera(stop_event: threading.Event):
             else:
                 ordered_current = remaining_curr
 
-            # Build smoothed/displayed circles with appear/hold and deadband on center
+            # Build smoothed/displayed circles using deadband on center position only
             next_displayed = []
-            for i in range(0, max(2, len(ordered_current))):
-                cur = ordered_current[i] if i < len(ordered_current) else None
-                prev = prev_displayed[i] if i < len(prev_displayed) else None
-
-                if cur is not None:
-                    x, y, r = cur
-                    if i < 2:
-                        appear_counts[i] += 1
-                        hold_counts[i] = HOLD_FRAMES
-                        allowed = appear_counts[i] >= APPEAR_FRAMES
-                    else:
-                        allowed = True
-                    if allowed:
-                        if prev is not None:
-                            px, py, pr = prev
-                            dx = x - px
-                            dy = y - py
-                            if (dx * dx + dy * dy) <= (DEADBAND_PX * DEADBAND_PX):
-                                next_displayed.append((px, py, r))
-                                continue
-                        next_displayed.append((x, y, r))
-                    else:
-                        if prev is not None:
-                            next_displayed.append(prev)
-                else:
-                    if i < 2 and prev is not None and hold_counts[i] > 0:
-                        hold_counts[i] -= 1
-                        next_displayed.append(prev)
-                    else:
-                        if i < 2:
-                            appear_counts[i] = 0
+            for i, cur in enumerate(ordered_current):
+                if cur is None:
+                    continue
+                x, y, r = cur
+                if i < len(prev_displayed):
+                    px, py, pr = prev_displayed[i]
+                    dx = x - px
+                    dy = y - py
+                    if (dx * dx + dy * dy) <= (DEADBAND_PX * DEADBAND_PX):
+                        # Keep previous center to reduce visual jitter; update radius
+                        next_displayed.append((px, py, r))
+                        continue
+                next_displayed.append((x, y, r))
 
             # Draw smoothed circles (in green) and annotate centers with dynamic thickness
             for idx, (dx_, dy_, r_) in enumerate(next_displayed):
@@ -506,65 +466,36 @@ def run_camera(stop_event: threading.Event):
                 best_margin2 = max(best_margin2, t2_r - d2)
 
             # Apply hysteresis: turn ON only when clearly inside by deadband; OFF when clearly outside
-            hit1_raw = last_hit1
+            hit1 = last_hit1
             if not last_hit1:
                 if best_margin1 >= DEADBAND_PX:
-                    hit1_raw = True
+                    hit1 = True
             else:
                 if best_margin1 <= -DEADBAND_PX:
-                    hit1_raw = False
+                    hit1 = False
 
-            hit2_raw = last_hit2
+            hit2 = last_hit2
             if not last_hit2:
                 if best_margin2 >= DEADBAND_PX:
-                    hit2_raw = True
+                    hit2 = True
             else:
                 if best_margin2 <= -DEADBAND_PX:
-                    hit2_raw = False
+                    hit2 = False
 
-            last_hit1, last_hit2 = hit1_raw, hit2_raw
-
-            # Temporal consecutive-frames filter for display/PLC states
-            if hit1_raw != disp_hit1:
-                if hit1_raw:
-                    on_count1 += 1; off_count1 = 0
-                    if on_count1 >= ON_FRAMES:
-                        disp_hit1 = True
-                        on_count1 = 0
-                else:
-                    off_count1 += 1; on_count1 = 0
-                    if off_count1 >= OFF_FRAMES:
-                        disp_hit1 = False
-                        off_count1 = 0
-            else:
-                on_count1 = 0; off_count1 = 0
-
-            if hit2_raw != disp_hit2:
-                if hit2_raw:
-                    on_count2 += 1; off_count2 = 0
-                    if on_count2 >= ON_FRAMES:
-                        disp_hit2 = True
-                        on_count2 = 0
-                else:
-                    off_count2 += 1; on_count2 = 0
-                    if off_count2 >= OFF_FRAMES:
-                        disp_hit2 = False
-                        off_count2 = 0
-            else:
-                on_count2 = 0; off_count2 = 0
+            last_hit1, last_hit2 = hit1, hit2
 
             # Send debounced states to PLC (non-blocking writer thread)
             if _PLC_AVAILABLE:
                 try:
-                    plc_update_default(disp_hit1, disp_hit2)
+                    plc_update_default(hit1, hit2)
                 except Exception:
                     pass
 
             # Draw target status texts in fixed HUD positions
             hud1_text = f"Target 1( cx={t1_x}, cy={t1_y} )"
             hud2_text = f"Target 2( cx={t2_x}, cy={t2_y} )"
-            hud1_color = (0, 200, 0) if disp_hit1 else (255, 255, 255)
-            hud2_color = (0, 200, 0) if disp_hit2 else (255, 255, 255)
+            hud1_color = (0, 200, 0) if hit1 else (255, 255, 255)
+            hud2_color = (0, 200, 0) if hit2 else (255, 255, 255)
             cv2.putText(display, hud1_text, (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, hud1_color, 2, cv2.LINE_AA)
             cv2.putText(display, hud2_text, (10, 60),
@@ -621,13 +552,9 @@ def start_gui(stop_event: threading.Event):
             root.after(50, _poll_stop)
     root.after(50, _poll_stop)
 
-    # Two-column layout to reduce height
-    container = ctk.CTkFrame(root)
-    container.pack(fill="both", expand=True, padx=12, pady=12)
-    frame_left = ctk.CTkFrame(container)
-    frame_left.pack(side="left", fill="both", expand=True, padx=(0, 6))
-    frame_right = ctk.CTkFrame(container)
-    frame_right.pack(side="left", fill="both", expand=True, padx=(6, 0))
+    # Frame for sliders
+    frame = ctk.CTkFrame(root)
+    frame.pack(fill="both", expand=True, padx=12, pady=12)
 
     # Initial slider values in pixels for Target 1
     init1_x_px = int(TARGET1_REL_X * CURRENT_FRAME_WIDTH)
@@ -635,30 +562,30 @@ def start_gui(stop_event: threading.Event):
     init1_d_px = int(TARGET1_DIAMETER)
 
     # Target 1 Controls
-    lbl1_title = ctk.CTkLabel(frame_left, text="Target 1 Controls")
+    lbl1_title = ctk.CTkLabel(frame, text="Target 1 Controls")
     lbl1_title.pack(anchor="w", pady=(0, 6))
 
     val1_x = tk.StringVar(value=f"X: {init1_x_px}")
     val1_y = tk.StringVar(value=f"Y: {init1_y_px}")
     val1_d = tk.StringVar(value=f"Diameter: {init1_d_px}")
 
-    lbl1_x = ctk.CTkLabel(frame_left, textvariable=val1_x)
+    lbl1_x = ctk.CTkLabel(frame, textvariable=val1_x)
     lbl1_x.pack(anchor="w")
-    sld1_x = ctk.CTkSlider(frame_left, from_=0, to=CURRENT_FRAME_WIDTH,
+    sld1_x = ctk.CTkSlider(frame, from_=0, to=CURRENT_FRAME_WIDTH,
                           number_of_steps=CURRENT_FRAME_WIDTH)
     sld1_x.set(init1_x_px)
     sld1_x.pack(fill="x", pady=(0, 8))
 
-    lbl1_y = ctk.CTkLabel(frame_left, textvariable=val1_y)
+    lbl1_y = ctk.CTkLabel(frame, textvariable=val1_y)
     lbl1_y.pack(anchor="w")
-    sld1_y = ctk.CTkSlider(frame_left, from_=0, to=CURRENT_FRAME_HEIGHT,
+    sld1_y = ctk.CTkSlider(frame, from_=0, to=CURRENT_FRAME_HEIGHT,
                           number_of_steps=CURRENT_FRAME_HEIGHT)
     sld1_y.set(init1_y_px)
     sld1_y.pack(fill="x", pady=(0, 8))
 
-    lbl1_d = ctk.CTkLabel(frame_left, textvariable=val1_d)
+    lbl1_d = ctk.CTkLabel(frame, textvariable=val1_d)
     lbl1_d.pack(anchor="w")
-    sld1_d = ctk.CTkSlider(frame_left, from_=5, to=min(
+    sld1_d = ctk.CTkSlider(frame, from_=5, to=min(
         CURRENT_FRAME_WIDTH, CURRENT_FRAME_HEIGHT), number_of_steps=min(CURRENT_FRAME_WIDTH, CURRENT_FRAME_HEIGHT))
     sld1_d.set(init1_d_px)
     sld1_d.pack(fill="x", pady=(0, 8))
@@ -686,7 +613,7 @@ def start_gui(stop_event: threading.Event):
     sld1_d.configure(command=on_d1)
 
     # Spacer
-    ctk.CTkLabel(frame_left, text="").pack(pady=(8, 0))
+    ctk.CTkLabel(frame, text="").pack(pady=(8, 0))
 
     # Initial slider values in pixels for Target 2
     init2_x_px = int(TARGET2_REL_X * CURRENT_FRAME_WIDTH)
@@ -694,30 +621,30 @@ def start_gui(stop_event: threading.Event):
     init2_d_px = int(TARGET2_DIAMETER)
 
     # Target 2 Controls
-    lbl2_title = ctk.CTkLabel(frame_left, text="Target 2 Controls")
+    lbl2_title = ctk.CTkLabel(frame, text="Target 2 Controls")
     lbl2_title.pack(anchor="w", pady=(0, 6))
 
     val2_x = tk.StringVar(value=f"X: {init2_x_px}")
     val2_y = tk.StringVar(value=f"Y: {init2_y_px}")
     val2_d = tk.StringVar(value=f"Diameter: {init2_d_px}")
 
-    lbl2_x = ctk.CTkLabel(frame_left, textvariable=val2_x)
+    lbl2_x = ctk.CTkLabel(frame, textvariable=val2_x)
     lbl2_x.pack(anchor="w")
-    sld2_x = ctk.CTkSlider(frame_left, from_=0, to=CURRENT_FRAME_WIDTH,
+    sld2_x = ctk.CTkSlider(frame, from_=0, to=CURRENT_FRAME_WIDTH,
                            number_of_steps=CURRENT_FRAME_WIDTH)
     sld2_x.set(init2_x_px)
     sld2_x.pack(fill="x", pady=(0, 8))
 
-    lbl2_y = ctk.CTkLabel(frame_left, textvariable=val2_y)
+    lbl2_y = ctk.CTkLabel(frame, textvariable=val2_y)
     lbl2_y.pack(anchor="w")
-    sld2_y = ctk.CTkSlider(frame_left, from_=0, to=CURRENT_FRAME_HEIGHT,
+    sld2_y = ctk.CTkSlider(frame, from_=0, to=CURRENT_FRAME_HEIGHT,
                            number_of_steps=CURRENT_FRAME_HEIGHT)
     sld2_y.set(init2_y_px)
     sld2_y.pack(fill="x", pady=(0, 8))
 
-    lbl2_d = ctk.CTkLabel(frame_left, textvariable=val2_d)
+    lbl2_d = ctk.CTkLabel(frame, textvariable=val2_d)
     lbl2_d.pack(anchor="w")
-    sld2_d = ctk.CTkSlider(frame_left, from_=5, to=min(
+    sld2_d = ctk.CTkSlider(frame, from_=5, to=min(
         CURRENT_FRAME_WIDTH, CURRENT_FRAME_HEIGHT), number_of_steps=min(CURRENT_FRAME_WIDTH, CURRENT_FRAME_HEIGHT))
     sld2_d.set(init2_d_px)
     sld2_d.pack(fill="x", pady=(0, 8))
@@ -745,16 +672,16 @@ def start_gui(stop_event: threading.Event):
     sld2_d.configure(command=on_d2)
 
     # Spacer
-    ctk.CTkLabel(frame_left, text="").pack(pady=(8, 0))
+    ctk.CTkLabel(frame, text="").pack(pady=(8, 0))
 
-    # Rendering settings (right column)
-    lblr_title = ctk.CTkLabel(frame_right, text="Rendering")
+    # Rendering settings
+    lblr_title = ctk.CTkLabel(frame, text="Rendering")
     lblr_title.pack(anchor="w", pady=(0, 6))
 
     val_dead = tk.StringVar(value=f"Deadband: {DEADBAND_PX} px")
-    lbl_dead = ctk.CTkLabel(frame_right, textvariable=val_dead)
+    lbl_dead = ctk.CTkLabel(frame, textvariable=val_dead)
     lbl_dead.pack(anchor="w")
-    sld_dead = ctk.CTkSlider(frame_right, from_=0, to=30, number_of_steps=30)
+    sld_dead = ctk.CTkSlider(frame, from_=0, to=30, number_of_steps=30)
     sld_dead.set(DEADBAND_PX)
     sld_dead.pack(fill="x", pady=(0, 8))
 
@@ -767,7 +694,7 @@ def start_gui(stop_event: threading.Event):
 
     # Mask toggle
     mask_var = tk.BooleanVar(value=SHOW_MASK)
-    chk_mask = ctk.CTkCheckBox(frame_right, text="Show red mask", variable=mask_var)
+    chk_mask = ctk.CTkCheckBox(frame, text="Show red mask", variable=mask_var)
     chk_mask.pack(anchor="w", pady=(4, 8))
 
     def on_mask_toggle():
@@ -779,48 +706,38 @@ def start_gui(stop_event: threading.Event):
     # Reset to defaults button (visual + detection)
     def on_reset_defaults():
         global DEADBAND_PX, HOUGH_PARAM2, MIN_RADIUS, SHOW_MASK
-        global STABILITY_FRAMES, ON_FRAMES, OFF_FRAMES, APPEAR_FRAMES, HOLD_FRAMES
         DEADBAND_PX = DEFAULT_DEADBAND_PX
         HOUGH_PARAM2 = DEFAULT_HOUGH_PARAM2
         MIN_RADIUS = DEFAULT_MIN_RADIUS
         SHOW_MASK = False
-        STABILITY_FRAMES = DEFAULT_STABILITY_FRAMES
-        ON_FRAMES = STABILITY_FRAMES
-        OFF_FRAMES = STABILITY_FRAMES
-        APPEAR_FRAMES = max(1, STABILITY_FRAMES - 1)
-        HOLD_FRAMES = max(1, STABILITY_FRAMES * 2)
         # Update GUI controls
         sld_dead.set(DEADBAND_PX); val_dead.set(f"Deadband: {DEADBAND_PX} px")
         sld_param2.set(HOUGH_PARAM2); val_param2.set(f"Hough param2: {HOUGH_PARAM2}")
         sld_minr.set(MIN_RADIUS); val_minr.set(f"Min radius: {MIN_RADIUS} px")
         mask_var.set(False)
         try:
-            sld_stab.set(STABILITY_FRAMES); val_stab.set(f"Stability frames: {STABILITY_FRAMES}")
-        except Exception:
-            pass
-        try:
             save_settings()
         except Exception:
             pass
 
-    btn_reset = ctk.CTkButton(frame_right, text="Reset to Defaults", command=on_reset_defaults)
+    btn_reset = ctk.CTkButton(frame, text="Reset to Defaults", command=on_reset_defaults)
     btn_reset.pack(anchor="w", pady=(0, 8))
 
     # Detection tuning
-    lbld_title = ctk.CTkLabel(frame_right, text="Detection Tuning")
+    lbld_title = ctk.CTkLabel(frame, text="Detection Tuning")
     lbld_title.pack(anchor="w", pady=(8, 6))
 
     val_param2 = tk.StringVar(value=f"Hough param2: {HOUGH_PARAM2}")
-    lbl_param2 = ctk.CTkLabel(frame_right, textvariable=val_param2)
+    lbl_param2 = ctk.CTkLabel(frame, textvariable=val_param2)
     lbl_param2.pack(anchor="w")
-    sld_param2 = ctk.CTkSlider(frame_right, from_=8, to=40, number_of_steps=32)
+    sld_param2 = ctk.CTkSlider(frame, from_=8, to=40, number_of_steps=32)
     sld_param2.set(HOUGH_PARAM2)
     sld_param2.pack(fill="x", pady=(0, 8))
 
     val_minr = tk.StringVar(value=f"Min radius: {MIN_RADIUS} px")
-    lbl_minr = ctk.CTkLabel(frame_right, textvariable=val_minr)
+    lbl_minr = ctk.CTkLabel(frame, textvariable=val_minr)
     lbl_minr.pack(anchor="w")
-    sld_minr = ctk.CTkSlider(frame_right, from_=2, to=30, number_of_steps=28)
+    sld_minr = ctk.CTkSlider(frame, from_=2, to=30, number_of_steps=28)
     sld_minr.set(MIN_RADIUS)
     sld_minr.pack(fill="x", pady=(0, 8))
 
@@ -837,30 +754,8 @@ def start_gui(stop_event: threading.Event):
     sld_param2.configure(command=on_param2)
     sld_minr.configure(command=on_minr)
 
-    # Unified Stability (temporal filtering) control
-    lbl_stab = ctk.CTkLabel(frame_right, text="Stability")
-    lbl_stab.pack(anchor="w", pady=(8, 6))
-
-    val_stab = tk.StringVar(value=f"Stability frames: {STABILITY_FRAMES}")
-    lbl_stabv = ctk.CTkLabel(frame_right, textvariable=val_stab)
-    lbl_stabv.pack(anchor="w")
-    sld_stab = ctk.CTkSlider(frame_right, from_=0, to=10, number_of_steps=10)
-    sld_stab.set(STABILITY_FRAMES)
-    sld_stab.pack(fill="x", pady=(0, 8))
-
-    def on_stability(val):
-        global STABILITY_FRAMES, ON_FRAMES, OFF_FRAMES, APPEAR_FRAMES, HOLD_FRAMES
-        STABILITY_FRAMES = int(float(val))
-        ON_FRAMES = STABILITY_FRAMES
-        OFF_FRAMES = STABILITY_FRAMES
-        APPEAR_FRAMES = max(1, STABILITY_FRAMES - 1)
-        HOLD_FRAMES = max(1, STABILITY_FRAMES * 2)
-        val_stab.set(f"Stability frames: {STABILITY_FRAMES}")
-
-    sld_stab.configure(command=on_stability)
-
     # Camera resolution selection
-    lbl_cam = ctk.CTkLabel(frame_right, text="Camera")
+    lbl_cam = ctk.CTkLabel(frame, text="Camera")
     lbl_cam.pack(anchor="w", pady=(8, 6))
     res_options = ["640x480", "1280x720", "1920x1080"]
     cur_res = f"{FRAME_WIDTH}x{FRAME_HEIGHT}"
@@ -883,12 +778,12 @@ def start_gui(stop_event: threading.Event):
         except Exception:
             pass
 
-    opt_res = ctk.CTkOptionMenu(frame_right, values=res_options, variable=res_var, command=on_res_change)
+    opt_res = ctk.CTkOptionMenu(frame, values=res_options, variable=res_var, command=on_res_change)
     opt_res.pack(anchor="w")
 
     # Status line for current actual resolution and FPS
     status_var = tk.StringVar(value=f"Actual: {CURRENT_FRAME_WIDTH}x{CURRENT_FRAME_HEIGHT} @ {CURRENT_FPS:.1f} fps")
-    lbl_status = ctk.CTkLabel(frame_right, textvariable=status_var)
+    lbl_status = ctk.CTkLabel(frame, textvariable=status_var)
     lbl_status.pack(anchor="w", pady=(6, 0))
 
     def _update_status():
@@ -972,4 +867,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
