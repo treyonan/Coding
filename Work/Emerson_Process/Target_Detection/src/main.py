@@ -23,11 +23,11 @@ CURRENT_FRAME_HEIGHT = FRAME_HEIGHT
 CURRENT_FPS = 0.0
 
 # Rendering / smoothing
-DEFAULT_DEADBAND_PX = 6
+DEFAULT_DEADBAND_PX = 1
 DEADBAND_PX = DEFAULT_DEADBAND_PX  # Only update drawn center if movement exceeds this many pixels
 
 # Detection parameters (tunable)
-DEFAULT_HOUGH_PARAM2 = 16  # Lower = more detections (more false positives)
+DEFAULT_HOUGH_PARAM2 = 8  # Lower = more detections (more false positives)
 DEFAULT_MIN_RADIUS = 4     # Minimum circle radius in pixels
 HOUGH_PARAM2 = DEFAULT_HOUGH_PARAM2
 MIN_RADIUS = DEFAULT_MIN_RADIUS
@@ -71,7 +71,8 @@ def _settings_path():
 
 
 def load_settings():
-    global CAMERA_INDEX, TARGET1_REL_X, TARGET1_REL_Y, TARGET1_DIAMETER
+    global CAMERA_INDEX, FRAME_WIDTH, FRAME_HEIGHT
+    global TARGET1_REL_X, TARGET1_REL_Y, TARGET1_DIAMETER
     global TARGET2_REL_X, TARGET2_REL_Y, TARGET2_DIAMETER
     global DEADBAND_PX, HOUGH_PARAM2, MIN_RADIUS, SHOW_MASK
     global ON_FRAMES, OFF_FRAMES, APPEAR_FRAMES, HOLD_FRAMES
@@ -92,6 +93,9 @@ def load_settings():
         CAMERA_INDEX = int(data.get("camera_index", CAMERA_INDEX))
         fw = int(data.get("frame_width", FRAME_WIDTH)) or FRAME_WIDTH
         fh = int(data.get("frame_height", FRAME_HEIGHT)) or FRAME_HEIGHT
+        # Apply loaded frame size to globals so it persists across runs
+        FRAME_WIDTH = fw
+        FRAME_HEIGHT = fh
 
         t1 = data.get("target1", {})
         t1x = int(t1.get("x", int(TARGET1_REL_X * fw)))
@@ -122,9 +126,9 @@ def load_settings():
         HOLD_FRAMES = int(data.get("hold_frames", HOLD_FRAMES))
         # Derive from unified stability (overrides legacy)
         if STABILITY_FRAMES is not None:
-            ON_FRAMES = STABILITY_FRAMES
-            OFF_FRAMES = STABILITY_FRAMES
-            APPEAR_FRAMES = max(1, STABILITY_FRAMES - 1)
+            ON_FRAMES = 1
+            OFF_FRAMES = max(1, STABILITY_FRAMES)
+            APPEAR_FRAMES = 1
             HOLD_FRAMES = max(1, STABILITY_FRAMES * 2)
     except Exception as e:
         print(f"Warning: Invalid settings content, using defaults: {e}")
@@ -338,9 +342,8 @@ def run_camera(stop_event: threading.Event):
         last_hit2 = False
         disp_hit1 = False  # displayed/PLC state after temporal filtering
         disp_hit2 = False
-        on_count1 = off_count1 = 0
-        on_count2 = off_count2 = 0
-        appear_counts = [0, 0]
+        off_count1 = 0
+        off_count2 = 0
         hold_counts = [0, 0]
         mask_window_open = False
         # last applied size to the capture
@@ -441,7 +444,7 @@ def run_camera(stop_event: threading.Event):
             else:
                 ordered_current = remaining_curr
 
-            # Build smoothed/displayed circles with appear/hold and deadband on center
+            # Build smoothed/displayed circles with hold and deadband on center
             next_displayed = []
             for i in range(0, max(2, len(ordered_current))):
                 cur = ordered_current[i] if i < len(ordered_current) else None
@@ -450,30 +453,23 @@ def run_camera(stop_event: threading.Event):
                 if cur is not None:
                     x, y, r = cur
                     if i < 2:
-                        appear_counts[i] += 1
+                        # Reset hold counter on any positive presence; draw immediately
                         hold_counts[i] = HOLD_FRAMES
-                        allowed = appear_counts[i] >= APPEAR_FRAMES
-                    else:
-                        allowed = True
-                    if allowed:
-                        if prev is not None:
-                            px, py, pr = prev
-                            dx = x - px
-                            dy = y - py
-                            if (dx * dx + dy * dy) <= (DEADBAND_PX * DEADBAND_PX):
-                                next_displayed.append((px, py, r))
-                                continue
-                        next_displayed.append((x, y, r))
-                    else:
-                        if prev is not None:
-                            next_displayed.append(prev)
+                    if prev is not None:
+                        px, py, pr = prev
+                        dx = x - px
+                        dy = y - py
+                        if (dx * dx + dy * dy) <= (DEADBAND_PX * DEADBAND_PX):
+                            next_displayed.append((px, py, r))
+                            continue
+                    next_displayed.append((x, y, r))
                 else:
                     if i < 2 and prev is not None and hold_counts[i] > 0:
                         hold_counts[i] -= 1
                         next_displayed.append(prev)
                     else:
-                        if i < 2:
-                            appear_counts[i] = 0
+                        # nothing to draw for this slot
+                        pass
 
             # Draw smoothed circles (in green) and annotate centers with dynamic thickness
             for idx, (dx_, dy_, r_) in enumerate(next_displayed):
@@ -524,34 +520,24 @@ def run_camera(stop_event: threading.Event):
 
             last_hit1, last_hit2 = hit1_raw, hit2_raw
 
-            # Temporal consecutive-frames filter for display/PLC states
-            if hit1_raw != disp_hit1:
-                if hit1_raw:
-                    on_count1 += 1; off_count1 = 0
-                    if on_count1 >= ON_FRAMES:
-                        disp_hit1 = True
-                        on_count1 = 0
-                else:
-                    off_count1 += 1; on_count1 = 0
-                    if off_count1 >= OFF_FRAMES:
-                        disp_hit1 = False
-                        off_count1 = 0
+            # Temporal filter: immediate ON; OFF only after OFF_FRAMES consecutive falses
+            if hit1_raw:
+                disp_hit1 = True
+                off_count1 = 0
             else:
-                on_count1 = 0; off_count1 = 0
+                off_count1 += 1
+                if off_count1 >= OFF_FRAMES:
+                    disp_hit1 = False
+                    off_count1 = 0
 
-            if hit2_raw != disp_hit2:
-                if hit2_raw:
-                    on_count2 += 1; off_count2 = 0
-                    if on_count2 >= ON_FRAMES:
-                        disp_hit2 = True
-                        on_count2 = 0
-                else:
-                    off_count2 += 1; on_count2 = 0
-                    if off_count2 >= OFF_FRAMES:
-                        disp_hit2 = False
-                        off_count2 = 0
+            if hit2_raw:
+                disp_hit2 = True
+                off_count2 = 0
             else:
-                on_count2 = 0; off_count2 = 0
+                off_count2 += 1
+                if off_count2 >= OFF_FRAMES:
+                    disp_hit2 = False
+                    off_count2 = 0
 
             # Send debounced states to PLC (non-blocking writer thread)
             if _PLC_AVAILABLE:
@@ -751,19 +737,7 @@ def start_gui(stop_event: threading.Event):
     lblr_title = ctk.CTkLabel(frame_right, text="Rendering")
     lblr_title.pack(anchor="w", pady=(0, 6))
 
-    val_dead = tk.StringVar(value=f"Deadband: {DEADBAND_PX} px")
-    lbl_dead = ctk.CTkLabel(frame_right, textvariable=val_dead)
-    lbl_dead.pack(anchor="w")
-    sld_dead = ctk.CTkSlider(frame_right, from_=0, to=30, number_of_steps=30)
-    sld_dead.set(DEADBAND_PX)
-    sld_dead.pack(fill="x", pady=(0, 8))
-
-    def on_dead(val):
-        global DEADBAND_PX
-        DEADBAND_PX = int(float(val))
-        val_dead.set(f"Deadband: {DEADBAND_PX} px")
-
-    sld_dead.configure(command=on_dead)
+    # Deadband is now fixed via settings (default 1 px); removed from GUI
 
     # Mask toggle
     mask_var = tk.BooleanVar(value=SHOW_MASK)
@@ -785,13 +759,11 @@ def start_gui(stop_event: threading.Event):
         MIN_RADIUS = DEFAULT_MIN_RADIUS
         SHOW_MASK = False
         STABILITY_FRAMES = DEFAULT_STABILITY_FRAMES
-        ON_FRAMES = STABILITY_FRAMES
-        OFF_FRAMES = STABILITY_FRAMES
-        APPEAR_FRAMES = max(1, STABILITY_FRAMES - 1)
+        ON_FRAMES = 1
+        OFF_FRAMES = max(1, STABILITY_FRAMES)
+        APPEAR_FRAMES = 1
         HOLD_FRAMES = max(1, STABILITY_FRAMES * 2)
         # Update GUI controls
-        sld_dead.set(DEADBAND_PX); val_dead.set(f"Deadband: {DEADBAND_PX} px")
-        sld_param2.set(HOUGH_PARAM2); val_param2.set(f"Hough param2: {HOUGH_PARAM2}")
         sld_minr.set(MIN_RADIUS); val_minr.set(f"Min radius: {MIN_RADIUS} px")
         mask_var.set(False)
         try:
@@ -810,12 +782,7 @@ def start_gui(stop_event: threading.Event):
     lbld_title = ctk.CTkLabel(frame_right, text="Detection Tuning")
     lbld_title.pack(anchor="w", pady=(8, 6))
 
-    val_param2 = tk.StringVar(value=f"Hough param2: {HOUGH_PARAM2}")
-    lbl_param2 = ctk.CTkLabel(frame_right, textvariable=val_param2)
-    lbl_param2.pack(anchor="w")
-    sld_param2 = ctk.CTkSlider(frame_right, from_=8, to=40, number_of_steps=32)
-    sld_param2.set(HOUGH_PARAM2)
-    sld_param2.pack(fill="x", pady=(0, 8))
+    # Hough param2 fixed via settings (default 8); removed from GUI
 
     val_minr = tk.StringVar(value=f"Min radius: {MIN_RADIUS} px")
     lbl_minr = ctk.CTkLabel(frame_right, textvariable=val_minr)
@@ -825,16 +792,14 @@ def start_gui(stop_event: threading.Event):
     sld_minr.pack(fill="x", pady=(0, 8))
 
     def on_param2(val):
-        global HOUGH_PARAM2
-        HOUGH_PARAM2 = int(float(val))
-        val_param2.set(f"Hough param2: {HOUGH_PARAM2}")
+        pass
 
     def on_minr(val):
         global MIN_RADIUS
         MIN_RADIUS = int(float(val))
         val_minr.set(f"Min radius: {MIN_RADIUS} px")
 
-    sld_param2.configure(command=on_param2)
+    # removed param2 slider hookup
     sld_minr.configure(command=on_minr)
 
     # Unified Stability (temporal filtering) control
@@ -851,9 +816,9 @@ def start_gui(stop_event: threading.Event):
     def on_stability(val):
         global STABILITY_FRAMES, ON_FRAMES, OFF_FRAMES, APPEAR_FRAMES, HOLD_FRAMES
         STABILITY_FRAMES = int(float(val))
-        ON_FRAMES = STABILITY_FRAMES
-        OFF_FRAMES = STABILITY_FRAMES
-        APPEAR_FRAMES = max(1, STABILITY_FRAMES - 1)
+        ON_FRAMES = 1
+        OFF_FRAMES = max(1, STABILITY_FRAMES)
+        APPEAR_FRAMES = 1
         HOLD_FRAMES = max(1, STABILITY_FRAMES * 2)
         val_stab.set(f"Stability frames: {STABILITY_FRAMES}")
 

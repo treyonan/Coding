@@ -1,24 +1,24 @@
 {
   "camera_index": 1,
-  "frame_width": 640,
-  "frame_height": 480,
+  "frame_width": 1280,
+  "frame_height": 720,
   "target1": {
-    "x": 346,
-    "y": 220,
-    "diameter": 14
+    "x": 588,
+    "y": 300,
+    "diameter": 29
   },
   "target2": {
-    "x": 346,
-    "y": 298,
-    "diameter": 16
+    "x": 608,
+    "y": 446,
+    "diameter": 40
   },
   "deadband_px": 1,
-  "hough_param2": 10,
-  "min_radius": 4,
+  "hough_param2": 8,
+  "min_radius": 5,
   "show_mask": false,
   "on_frames": 1,
-  "off_frames": 1,
+  "off_frames": 3,
   "appear_frames": 1,
-  "hold_frames": 2,
-  "stability_frames": 1
+  "hold_frames": 6,
+  "stability_frames": 3
 }
