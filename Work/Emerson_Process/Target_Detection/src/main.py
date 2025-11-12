@@ -1,3 +1,5 @@
+# REV 1.0 - Added faster contour mode and toggle from gui - 11/12/2025 - T. O'Nan
+
 import cv2
 import customtkinter as ctk
 import tkinter as tk
@@ -6,6 +8,8 @@ import json
 import os
 import math
 import time
+import platform
+
 try:
     # PLC helpers (optional). If pylogix is missing, we just skip PLC writes.
     from utils.pylogix import init_default as plc_init_default, update_default as plc_update_default, shutdown_default as plc_shutdown_default
@@ -15,7 +19,7 @@ except Exception as _e:
     _PLC_AVAILABLE = False
     _PLC_IMPORT_ERROR = _e
 
-CAMERA_INDEX = 1
+CAMERA_INDEX = 0
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 CURRENT_FRAME_WIDTH = FRAME_WIDTH
@@ -45,6 +49,9 @@ HOLD_FRAMES = DEFAULT_HOLD_FRAMES
 # Unified stability control
 DEFAULT_STABILITY_FRAMES = 3
 STABILITY_FRAMES = DEFAULT_STABILITY_FRAMES
+
+# Detection mode toggle (True = fast, False = Hughes)
+USE_FAST_DETECTION = False
 
 # Debug view
 SHOW_MASK = False
@@ -77,6 +84,7 @@ def load_settings():
     global DEADBAND_PX, HOUGH_PARAM2, MIN_RADIUS, SHOW_MASK
     global ON_FRAMES, OFF_FRAMES, APPEAR_FRAMES, HOLD_FRAMES
     global STABILITY_FRAMES
+    global USE_FAST_DETECTION    
 
     path = _settings_path()
     if not os.path.exists(path):
@@ -130,6 +138,7 @@ def load_settings():
             OFF_FRAMES = max(1, STABILITY_FRAMES)
             APPEAR_FRAMES = 1
             HOLD_FRAMES = max(1, STABILITY_FRAMES * 2)
+        USE_FAST_DETECTION = bool(data.get("fast_detection_mode", USE_FAST_DETECTION))
     except Exception as e:
         print(f"Warning: Invalid settings content, using defaults: {e}")
 
@@ -156,6 +165,7 @@ def save_settings():
         "appear_frames": int(APPEAR_FRAMES),
         "hold_frames": int(HOLD_FRAMES),
         "stability_frames": int(STABILITY_FRAMES),
+        "fast_detection_mode": bool(USE_FAST_DETECTION),
     }
 
     path = _settings_path()
@@ -182,8 +192,9 @@ def create_red_mask(frame):
     mask = cv2.medianBlur(mask, 5)
     return mask
 
+#= Hughes Circles =======================================================================
 
-def detect_red_circles(frame, max_count: int = 2, mask=None):
+def detect_red_circles_houghes(frame, max_count: int = 2, mask=None):
     """Return up to `max_count` red circles as a list of (x, y, r)."""
     if mask is None:
         mask = create_red_mask(frame)
@@ -313,9 +324,39 @@ def detect_red_circles(frame, max_count: int = 2, mask=None):
 
     return candidates
 
+#= FAST RED CIRCLES ==================================================================
+
+def detect_red_circles(frame, max_count=2, mask=None):
+    """Contour-based red detection (fast)."""
+    if mask is None:
+        mask = create_red_mask(frame)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    results = []
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area < 80:
+            continue
+        (x, y), r = cv2.minEnclosingCircle(c)
+        r = int(r)
+        if r < MIN_RADIUS or r > 100:
+            continue
+        perim = cv2.arcLength(c, True)
+        if perim == 0:
+            continue
+        circularity = 4 * math.pi * area / (perim * perim)
+        if circularity > 0.75:
+            results.append((int(x), int(y), r))
+    results.sort(key=lambda c: c[2], reverse=True)
+    return results[:max_count]
+
+#======================================================================================
 
 def run_camera(stop_event: threading.Event):
-    cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
+    if platform.system() == "Windows":
+        cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
+    else:
+        cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_V4L2)
+
     if not cap.isOpened():
         print(f"Error: Cannot open camera index {CAMERA_INDEX}")
         return
@@ -388,8 +429,14 @@ def run_camera(stop_event: threading.Event):
             except Exception:
                 pass
 
-            mask = create_red_mask(frame)
-            circles = detect_red_circles(frame, max_count=2, mask=mask)
+            mask = create_red_mask(frame)       
+
+	    # Select detection mode based on USE_FAST_DETECTION flag
+            if USE_FAST_DETECTION:
+                circles = detect_red_circles(frame, max_count=2, mask=mask)
+            else:
+                circles = detect_red_circles_houghes(frame, max_count=2, mask=mask)
+
             display = frame.copy()
 
             # Compute targets' centers in pixels (relative to current frame size)
@@ -555,6 +602,11 @@ def run_camera(stop_event: threading.Event):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, hud1_color, 2, cv2.LINE_AA)
             cv2.putText(display, hud2_text, (10, 60),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, hud2_color, 2, cv2.LINE_AA)
+
+            # Show which detection mode is active
+            mode_text = "Mode: FAST (Contours)" if USE_FAST_DETECTION else "Mode: HUGHES (Hough Circles)"
+            cv2.putText(display, mode_text, (10, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2, cv2.LINE_AA)
 
             cv2.imshow(window_name, display)
             # Optional mask window
@@ -855,6 +907,25 @@ def start_gui(stop_event: threading.Event):
     status_var = tk.StringVar(value=f"Actual: {CURRENT_FRAME_WIDTH}x{CURRENT_FRAME_HEIGHT} @ {CURRENT_FPS:.1f} fps")
     lbl_status = ctk.CTkLabel(frame_right, textvariable=status_var)
     lbl_status.pack(anchor="w", pady=(6, 0))
+
+    # --- Detection Mode Toggle ---
+    mode_var = tk.BooleanVar(value=bool(USE_FAST_DETECTION))
+
+    def on_mode_toggle():
+        global USE_FAST_DETECTION
+        USE_FAST_DETECTION = mode_var.get()
+        mode_label = "FAST (Contours)" if USE_FAST_DETECTION else "HUGHES (Hough Circles)"
+        print(f"[INFO] Detection mode switched to: {mode_label}")
+        # Save this setting so it persists across runs        
+        save_settings()        
+
+    chk_mode = ctk.CTkSwitch(
+        frame_right,
+        text="Detection Mode: FAST / HUGHES",
+        variable=mode_var,
+        command=on_mode_toggle,
+    )
+    chk_mode.pack(anchor="w", pady=(8, 0))
 
     def _update_status():
         status_var.set(f"Actual: {CURRENT_FRAME_WIDTH}x{CURRENT_FRAME_HEIGHT} @ {CURRENT_FPS:.1f} fps")

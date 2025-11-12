@@ -1,24 +1,25 @@
 {
-  "camera_index": 1,
+  "camera_index": 0,
   "frame_width": 1280,
   "frame_height": 720,
   "target1": {
-    "x": 588,
-    "y": 300,
-    "diameter": 29
+    "x": 506,
+    "y": 317,
+    "diameter": 40
   },
   "target2": {
-    "x": 608,
-    "y": 446,
+    "x": 844,
+    "y": 360,
     "diameter": 40
   },
   "deadband_px": 1,
   "hough_param2": 8,
-  "min_radius": 5,
+  "min_radius": 4,
   "show_mask": false,
   "on_frames": 1,
   "off_frames": 3,
   "appear_frames": 1,
   "hold_frames": 6,
-  "stability_frames": 3
+  "stability_frames": 3,
+  "fast_detection_mode": true
 }
