@@ -1,5 +1,5 @@
 {
-  "camera_index": 0,
+  "camera_index": 1,
   "frame_width": 1280,
   "frame_height": 720,
   "target1": {
@@ -9,7 +9,7 @@
   },
   "target2": {
     "x": 844,
-    "y": 360,
+    "y": 446,
     "diameter": 40
   },
   "deadband_px": 1,

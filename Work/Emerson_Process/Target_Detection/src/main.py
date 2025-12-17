@@ -19,7 +19,7 @@ except Exception as _e:
     _PLC_AVAILABLE = False
     _PLC_IMPORT_ERROR = _e
 
-CAMERA_INDEX = 0
+CAMERA_INDEX = 1
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 CURRENT_FRAME_WIDTH = FRAME_WIDTH
@@ -28,7 +28,8 @@ CURRENT_FPS = 0.0
 
 # Rendering / smoothing
 DEFAULT_DEADBAND_PX = 1
-DEADBAND_PX = DEFAULT_DEADBAND_PX  # Only update drawn center if movement exceeds this many pixels
+# Only update drawn center if movement exceeds this many pixels
+DEADBAND_PX = DEFAULT_DEADBAND_PX
 
 # Detection parameters (tunable)
 DEFAULT_HOUGH_PARAM2 = 8  # Lower = more detections (more false positives)
@@ -84,7 +85,7 @@ def load_settings():
     global DEADBAND_PX, HOUGH_PARAM2, MIN_RADIUS, SHOW_MASK
     global ON_FRAMES, OFF_FRAMES, APPEAR_FRAMES, HOLD_FRAMES
     global STABILITY_FRAMES
-    global USE_FAST_DETECTION    
+    global USE_FAST_DETECTION
 
     path = _settings_path()
     if not os.path.exists(path):
@@ -138,7 +139,8 @@ def load_settings():
             OFF_FRAMES = max(1, STABILITY_FRAMES)
             APPEAR_FRAMES = 1
             HOLD_FRAMES = max(1, STABILITY_FRAMES * 2)
-        USE_FAST_DETECTION = bool(data.get("fast_detection_mode", USE_FAST_DETECTION))
+        USE_FAST_DETECTION = bool(
+            data.get("fast_detection_mode", USE_FAST_DETECTION))
     except Exception as e:
         print(f"Warning: Invalid settings content, using defaults: {e}")
 
@@ -192,7 +194,8 @@ def create_red_mask(frame):
     mask = cv2.medianBlur(mask, 5)
     return mask
 
-#= Hughes Circles =======================================================================
+# = Hughes Circles =======================================================================
+
 
 def detect_red_circles_houghes(frame, max_count: int = 2, mask=None):
     """Return up to `max_count` red circles as a list of (x, y, r)."""
@@ -324,13 +327,15 @@ def detect_red_circles_houghes(frame, max_count: int = 2, mask=None):
 
     return candidates
 
-#= FAST RED CIRCLES ==================================================================
+# = FAST RED CIRCLES ==================================================================
+
 
 def detect_red_circles(frame, max_count=2, mask=None):
     """Contour-based red detection (fast)."""
     if mask is None:
         mask = create_red_mask(frame)
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(
+        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     results = []
     for c in contours:
         area = cv2.contourArea(c)
@@ -349,7 +354,8 @@ def detect_red_circles(frame, max_count=2, mask=None):
     results.sort(key=lambda c: c[2], reverse=True)
     return results[:max_count]
 
-#======================================================================================
+# ======================================================================================
+
 
 def run_camera(stop_event: threading.Event):
     if platform.system() == "Windows":
@@ -429,13 +435,14 @@ def run_camera(stop_event: threading.Event):
             except Exception:
                 pass
 
-            mask = create_red_mask(frame)       
+            mask = create_red_mask(frame)
 
-	    # Select detection mode based on USE_FAST_DETECTION flag
+            # Select detection mode based on USE_FAST_DETECTION flag
             if USE_FAST_DETECTION:
                 circles = detect_red_circles(frame, max_count=2, mask=mask)
             else:
-                circles = detect_red_circles_houghes(frame, max_count=2, mask=mask)
+                circles = detect_red_circles_houghes(
+                    frame, max_count=2, mask=mask)
 
             display = frame.copy()
 
@@ -683,14 +690,14 @@ def start_gui(stop_event: threading.Event):
     lbl1_x = ctk.CTkLabel(frame_left, textvariable=val1_x)
     lbl1_x.pack(anchor="w")
     sld1_x = ctk.CTkSlider(frame_left, from_=0, to=CURRENT_FRAME_WIDTH,
-                          number_of_steps=CURRENT_FRAME_WIDTH)
+                           number_of_steps=CURRENT_FRAME_WIDTH)
     sld1_x.set(init1_x_px)
     sld1_x.pack(fill="x", pady=(0, 8))
 
     lbl1_y = ctk.CTkLabel(frame_left, textvariable=val1_y)
     lbl1_y.pack(anchor="w")
     sld1_y = ctk.CTkSlider(frame_left, from_=0, to=CURRENT_FRAME_HEIGHT,
-                          number_of_steps=CURRENT_FRAME_HEIGHT)
+                           number_of_steps=CURRENT_FRAME_HEIGHT)
     sld1_y.set(init1_y_px)
     sld1_y.pack(fill="x", pady=(0, 8))
 
@@ -793,7 +800,8 @@ def start_gui(stop_event: threading.Event):
 
     # Mask toggle
     mask_var = tk.BooleanVar(value=SHOW_MASK)
-    chk_mask = ctk.CTkCheckBox(frame_right, text="Show red mask", variable=mask_var)
+    chk_mask = ctk.CTkCheckBox(
+        frame_right, text="Show red mask", variable=mask_var)
     chk_mask.pack(anchor="w", pady=(4, 8))
 
     def on_mask_toggle():
@@ -816,10 +824,12 @@ def start_gui(stop_event: threading.Event):
         APPEAR_FRAMES = 1
         HOLD_FRAMES = max(1, STABILITY_FRAMES * 2)
         # Update GUI controls
-        sld_minr.set(MIN_RADIUS); val_minr.set(f"Min radius: {MIN_RADIUS} px")
+        sld_minr.set(MIN_RADIUS)
+        val_minr.set(f"Min radius: {MIN_RADIUS} px")
         mask_var.set(False)
         try:
-            sld_stab.set(STABILITY_FRAMES); val_stab.set(f"Stability frames: {STABILITY_FRAMES}")
+            sld_stab.set(STABILITY_FRAMES)
+            val_stab.set(f"Stability frames: {STABILITY_FRAMES}")
         except Exception:
             pass
         try:
@@ -827,7 +837,8 @@ def start_gui(stop_event: threading.Event):
         except Exception:
             pass
 
-    btn_reset = ctk.CTkButton(frame_right, text="Reset to Defaults", command=on_reset_defaults)
+    btn_reset = ctk.CTkButton(
+        frame_right, text="Reset to Defaults", command=on_reset_defaults)
     btn_reset.pack(anchor="w", pady=(0, 8))
 
     # Detection tuning
@@ -888,7 +899,8 @@ def start_gui(stop_event: threading.Event):
     def on_res_change(choice: str):
         try:
             w_s, h_s = choice.split("x")
-            w_n = int(w_s); h_n = int(h_s)
+            w_n = int(w_s)
+            h_n = int(h_s)
         except Exception:
             return
         global FRAME_WIDTH, FRAME_HEIGHT
@@ -900,11 +912,13 @@ def start_gui(stop_event: threading.Event):
         except Exception:
             pass
 
-    opt_res = ctk.CTkOptionMenu(frame_right, values=res_options, variable=res_var, command=on_res_change)
+    opt_res = ctk.CTkOptionMenu(
+        frame_right, values=res_options, variable=res_var, command=on_res_change)
     opt_res.pack(anchor="w")
 
     # Status line for current actual resolution and FPS
-    status_var = tk.StringVar(value=f"Actual: {CURRENT_FRAME_WIDTH}x{CURRENT_FRAME_HEIGHT} @ {CURRENT_FPS:.1f} fps")
+    status_var = tk.StringVar(
+        value=f"Actual: {CURRENT_FRAME_WIDTH}x{CURRENT_FRAME_HEIGHT} @ {CURRENT_FPS:.1f} fps")
     lbl_status = ctk.CTkLabel(frame_right, textvariable=status_var)
     lbl_status.pack(anchor="w", pady=(6, 0))
 
@@ -916,8 +930,8 @@ def start_gui(stop_event: threading.Event):
         USE_FAST_DETECTION = mode_var.get()
         mode_label = "FAST (Contours)" if USE_FAST_DETECTION else "HUGHES (Hough Circles)"
         print(f"[INFO] Detection mode switched to: {mode_label}")
-        # Save this setting so it persists across runs        
-        save_settings()        
+        # Save this setting so it persists across runs
+        save_settings()
 
     chk_mode = ctk.CTkSwitch(
         frame_right,
@@ -928,7 +942,8 @@ def start_gui(stop_event: threading.Event):
     chk_mode.pack(anchor="w", pady=(8, 0))
 
     def _update_status():
-        status_var.set(f"Actual: {CURRENT_FRAME_WIDTH}x{CURRENT_FRAME_HEIGHT} @ {CURRENT_FPS:.1f} fps")
+        status_var.set(
+            f"Actual: {CURRENT_FRAME_WIDTH}x{CURRENT_FRAME_HEIGHT} @ {CURRENT_FPS:.1f} fps")
         root.after(500, _update_status)
 
     root.after(600, _update_status)
@@ -953,10 +968,14 @@ def start_gui(stop_event: threading.Event):
             y1 = int(TARGET1_REL_Y * h)
             x2 = int(TARGET2_REL_X * w)
             y2 = int(TARGET2_REL_Y * h)
-            sld1_x.set(x1); val1_x.set(f"X: {x1}")
-            sld1_y.set(y1); val1_y.set(f"Y: {y1}")
-            sld2_x.set(x2); val2_x.set(f"X: {x2}")
-            sld2_y.set(y2); val2_y.set(f"Y: {y2}")
+            sld1_x.set(x1)
+            val1_x.set(f"X: {x1}")
+            sld1_y.set(y1)
+            val1_y.set(f"Y: {y1}")
+            sld2_x.set(x2)
+            val2_x.set(f"X: {x2}")
+            sld2_y.set(y2)
+            val2_y.set(f"Y: {y2}")
 
             last_w, last_h = w, h
 
@@ -1008,4 +1027,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
